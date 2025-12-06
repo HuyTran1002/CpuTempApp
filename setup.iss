@@ -117,11 +117,42 @@ begin
   end;
 end;
 
+// Kiểm tra xem app đã cài đặt chưa
+function IsAppAlreadyInstalled(): Boolean;
+var
+  InstallPath: String;
+begin
+  Result := False;
+  
+  // Kiểm tra registry để lấy đường dẫn cài đặt cũ
+  if RegQueryStringValue(HKLM, 
+       'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\CPU Temp Monitor_is1', 
+       'InstallLocation', InstallPath) then
+  begin
+    // Nếu tìm thấy registry entry và thư mục tồn tại
+    if (InstallPath <> '') and DirExists(InstallPath) then
+    begin
+      Result := True;
+    end;
+  end;
+  
+  // Fallback: kiểm tra đường dẫn cài đặt mặc định
+  if not Result then
+  begin
+    if DirExists('{pf}\CpuTempMonitor') then
+    begin
+      Result := True;
+    end;
+  end;
+end;
+
 procedure InitializeWizard();
 var
   ResultCode: Integer;
   ErrorCode: Integer;
+  UninstallResult: Integer;
 begin
+  // Kiểm tra .NET trước
   if not IsDotNetInstalled() then
   begin
     MsgBox('.NET 7.0 Desktop Runtime chưa được cài đặt trên máy tính này.' + #13#10 + 
@@ -129,6 +160,23 @@ begin
            'Vui lòng tải và cài đặt .NET 7.0 Desktop Runtime, sau đó chạy lại bộ cài này.', 
            mbError, MB_OK);
     ShellExec('open', 'https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/runtime-desktop-7.0.20-windows-x64-installer', '', '', SW_SHOW, ewNoWait, ErrorCode);
+    Abort();
+  end;
+  
+  // Kiểm tra xem app đã cài chưa
+  if IsAppAlreadyInstalled() then
+  begin
+    if MsgBox('CPU Temp Monitor đã được cài đặt trên máy tính này.' + #13#10#13#10 + 
+              'Bạn phải gỡ cài đặt phiên bản cũ trước khi cài đặt phiên bản mới.' + #13#10#13#10 + 
+              'Nhấn "Có" để mở Gỡ cài đặt chương trình' + #13#10 + 
+              'Sau đó chạy lại bộ cài này.', 
+              mbConfirmation, MB_YESNO) = IDYES then
+    begin
+      // Mở Control Panel để gỡ cài đặt
+      ShellExec('open', 'appwiz.cpl', '', '', SW_SHOW, ewWaitUntilTerminated, UninstallResult);
+    end;
+    
+    // Dừng lại và hủy cài đặt
     Abort();
   end;
 end;
