@@ -117,10 +117,27 @@ begin
   end;
 end;
 
+// Hàm tìm uninstall string từ registry
+function GetUninstallString(): String;
+var
+  UninstallPath: String;
+begin
+  Result := '';
+  
+  // Tìm uninstall string cho Inno Setup app
+  if RegQueryStringValue(HKLM, 
+       'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\CPU Temp Monitor_is1', 
+       'UninstallString', UninstallPath) then
+  begin
+    Result := UninstallPath;
+  end;
+end;
+
 // Kiểm tra xem app đã cài đặt chưa
 function IsAppAlreadyInstalled(): Boolean;
 var
   InstallPath: String;
+  UninstallStr: String;
 begin
   Result := False;
   
@@ -139,7 +156,7 @@ begin
   // Fallback: kiểm tra đường dẫn cài đặt mặc định
   if not Result then
   begin
-    if DirExists('{pf}\CpuTempMonitor') then
+    if DirExists(ExpandConstant('{pf}\CpuTempMonitor')) then
     begin
       Result := True;
     end;
@@ -151,6 +168,8 @@ var
   ResultCode: Integer;
   ErrorCode: Integer;
   UninstallResult: Integer;
+  UninstallStr: String;
+  InstallPath: String;
 begin
   // Kiểm tra .NET trước
   if not IsDotNetInstalled() then
@@ -168,12 +187,35 @@ begin
   begin
     if MsgBox('CPU Temp Monitor đã được cài đặt trên máy tính này.' + #13#10#13#10 + 
               'Bạn phải gỡ cài đặt phiên bản cũ trước khi cài đặt phiên bản mới.' + #13#10#13#10 + 
-              'Nhấn "Có" để mở Gỡ cài đặt chương trình' + #13#10 + 
-              'Sau đó chạy lại bộ cài này.', 
+              'Nhấn "Có" để gỡ cài đặt app cũ' + #13#10 + 
+              'Nhấn "Không" để hủy cài đặt.', 
               mbConfirmation, MB_YESNO) = IDYES then
     begin
-      // Mở Control Panel để gỡ cài đặt
-      ShellExec('open', 'appwiz.cpl', '', '', SW_SHOW, ewWaitUntilTerminated, UninstallResult);
+      // Lấy uninstall string từ registry
+      UninstallStr := GetUninstallString();
+      
+      if UninstallStr <> '' then
+      begin
+        // Chạy uninstall file trực tiếp
+        ShellExec('', UninstallStr, '/SILENT /NORESTART', '', SW_SHOW, ewWaitUntilTerminated, UninstallResult);
+        
+        // Sau khi gỡ xong, hiện thông báo
+        if UninstallResult = 0 then
+        begin
+          MsgBox('App cũ đã được gỡ cài đặt thành công.' + #13#10 + 
+                 'Vui lòng chạy lại installer này để tiếp tục cài đặt phiên bản mới.', 
+                 mbInformation, MB_OK);
+        end;
+      end
+      else
+      begin
+        // Nếu không tìm thấy uninstall string, mở Control Panel
+        MsgBox('Không thể tự động gỡ cài đặt.' + #13#10 + 
+               'Vui lòng mở Control Panel > Programs > Programs and Features' + #13#10 + 
+               'Tìm "CPU Temp Monitor" và gỡ cài đặt thủ công.', 
+               mbInformation, MB_OK);
+        ShellExec('open', 'appwiz.cpl', '', '', SW_SHOW, ewNoWait, ErrorCode);
+      end;
     end;
     
     // Dừng lại và hủy cài đặt
