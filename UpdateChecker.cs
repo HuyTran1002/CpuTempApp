@@ -3,14 +3,13 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using System.Reflection;
 using System.Windows.Forms;
-using System.Diagnostics;
 
 namespace CpuTempApp
 {
     public class UpdateChecker
     {
         private const string VERSION_CHECK_URL = "https://raw.githubusercontent.com/HuyTran1002/CpuTempApp/main/version.txt";
-        private const string DOWNLOAD_URL = "https://github.com/HuyTran1002/CpuTempApp/releases/latest";
+        private const string DOWNLOAD_URL = "https://github.com/HuyTran1002/CpuTempApp/releases/download/{0}/CpuTempSetup.exe";
         
         public static Version CurrentVersion
         {
@@ -46,29 +45,38 @@ namespace CpuTempApp
             return (false, CurrentVersion.ToString());
         }
 
-        public static void ShowUpdateDialog(string latestVersion)
+        public static void ShowAutoUpdateDialog(string latestVersion)
+        {
+            try
+            {
+                // Tạo URL cho file download từ GitHub release
+                string downloadUrl = string.Format(DOWNLOAD_URL, $"v{latestVersion}");
+                
+                // Hiển thị form update tự động
+                UpdateForm updateForm = new UpdateForm(latestVersion, downloadUrl);
+                updateForm.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Lỗi khi cập nhật: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        public static void ShowManualUpdateDialog(string latestVersion)
         {
             var result = MessageBox.Show(
-                $"A new version ({latestVersion}) is available!\n\n" +
-                $"Current version: {CurrentVersion}\n" +
-                $"Latest version: {latestVersion}\n\n" +
-                $"Would you like to download the update now?",
-                "Update Available",
+                $"Phiên bản mới ({latestVersion}) có sẵn!\n\n" +
+                $"Phiên bản hiện tại: {CurrentVersion}\n" +
+                $"Phiên bản mới nhất: {latestVersion}\n\n" +
+                $"Bạn có muốn tải phiên bản mới ngay bây giờ không?",
+                "Cập Nhật Có Sẵn",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Information
             );
 
             if (result == DialogResult.Yes)
             {
-                try
-                {
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = DOWNLOAD_URL,
-                        UseShellExecute = true
-                    });
-                }
-                catch { }
+                ShowAutoUpdateDialog(latestVersion);
             }
         }
     }

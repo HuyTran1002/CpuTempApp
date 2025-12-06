@@ -218,22 +218,23 @@ namespace CpuTempApp
         {
             try
             {
-                notifyIcon.ShowBalloonTip(2000, "Update Check", "Checking for updates...", ToolTipIcon.Info);
+                notifyIcon.ShowBalloonTip(2000, "Kiểm Tra Cập Nhật", "Đang kiểm tra cập nhật...", ToolTipIcon.Info);
                 
                 var (hasUpdate, latestVersion) = await UpdateChecker.CheckForUpdateAsync();
                 
                 if (hasUpdate)
                 {
-                    UpdateChecker.ShowUpdateDialog(latestVersion);
+                    // Show auto-update dialog like IDM
+                    UpdateChecker.ShowAutoUpdateDialog(latestVersion);
                 }
                 else
                 {
-                    notifyIcon.ShowBalloonTip(2000, "Update Check", "You have the latest version!", ToolTipIcon.Info);
+                    notifyIcon.ShowBalloonTip(2000, "Kiểm Tra Cập Nhật", "Bạn đang dùng phiên bản mới nhất!", ToolTipIcon.Info);
                 }
             }
             catch
             {
-                notifyIcon.ShowBalloonTip(2000, "Update Check", "Failed to check for updates.", ToolTipIcon.Error);
+                notifyIcon.ShowBalloonTip(2000, "Kiểm Tra Cập Nhật", "Không thể kiểm tra cập nhật.", ToolTipIcon.Error);
             }
         }
     }

@@ -31,7 +31,8 @@ namespace CpuTempApp
                         {
                             Application.OpenForms[0].BeginInvoke((Action)(() =>
                             {
-                                UpdateChecker.ShowUpdateDialog(latestVersion);
+                                // Show auto-update dialog (like IDM)
+                                UpdateChecker.ShowAutoUpdateDialog(latestVersion);
                             }));
                         }
                     }
