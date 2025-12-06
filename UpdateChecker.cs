@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using System.Reflection;
 using System.Windows.Forms;
+using System.IO;
 
 namespace CpuTempApp
 {
@@ -31,36 +32,44 @@ namespace CpuTempApp
                 var versionString = await client.GetStringAsync(VERSION_CHECK_URL);
                 versionString = versionString.Trim();
                 
+                // DEBUG: Ghi log
+                string logPath = Path.Combine(Path.GetTempPath(), "CpuTempApp_update.log");
+                File.AppendAllText(logPath, $"[{DateTime.Now}] Checked version: {versionString}, Current: {CurrentVersion}\n");
+                
                 if (Version.TryParse(versionString, out var latestVersion))
                 {
                     bool hasUpdate = latestVersion > CurrentVersion;
+                    File.AppendAllText(logPath, $"[{DateTime.Now}] Has update: {hasUpdate}\n");
                     return (hasUpdate, versionString);
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Network error or file not found - silently ignore
+                // DEBUG: Ghi log lỗi
+                string logPath = Path.Combine(Path.GetTempPath(), "CpuTempApp_update.log");
+                File.AppendAllText(logPath, $"[{DateTime.Now}] Error: {ex.Message}\n");
             }
             
             return (false, CurrentVersion.ToString());
         }
 
-        public static void ShowAutoUpdateDialog(string latestVersion)
+    public static void ShowAutoUpdateDialog(string latestVersion)
+    {
+        try
         {
-            try
-            {
-                // Tạo URL cho file download từ GitHub release
-                string downloadUrl = string.Format(DOWNLOAD_URL, $"v{latestVersion}");
-                
-                // Hiển thị form update tự động
-                UpdateForm updateForm = new UpdateForm(latestVersion, downloadUrl);
-                updateForm.ShowDialog();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Lỗi khi cập nhật: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            // Tạo URL cho file download trực tiếp từ Release
+            // Format: https://github.com/HuyTran1002/CpuTempApp/releases/download/v1.0.2/CpuTempSetup.exe
+            string downloadUrl = $"https://github.com/HuyTran1002/CpuTempApp/releases/download/v{latestVersion}/CpuTempSetup.exe";
+            
+            // Hiển thị form update tự động
+            UpdateForm updateForm = new UpdateForm(latestVersion, downloadUrl);
+            updateForm.ShowDialog();
         }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Lỗi khi cập nhật: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
 
         public static void ShowManualUpdateDialog(string latestVersion)
         {
