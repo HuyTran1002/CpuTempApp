@@ -88,18 +88,18 @@ namespace CpuTempApp
             Button downloadBtn = new Button();
             downloadBtn.Name = "downloadBtn";
             downloadBtn.Text = "Tải & Cài Đặt";
-            downloadBtn.Location = new Point(140, 180);
-            downloadBtn.Size = new Size(100, 35);
+            downloadBtn.Location = new Point(120, 180);
+            downloadBtn.Size = new Size(140, 35);
             downloadBtn.BackColor = Color.FromArgb(0, 120, 215);
             downloadBtn.ForeColor = Color.White;
-            downloadBtn.Font = new Font("Segoe UI", 10);
+            downloadBtn.Font = new Font("Segoe UI", 10, FontStyle.Bold);
             downloadBtn.Click += DownloadBtn_Click;
             this.Controls.Add(downloadBtn);
 
             // Cancel Button
             Button cancelBtn = new Button();
             cancelBtn.Text = "Hủy";
-            cancelBtn.Location = new Point(260, 180);
+            cancelBtn.Location = new Point(280, 180);
             cancelBtn.Size = new Size(100, 35);
             cancelBtn.Font = new Font("Segoe UI", 10);
             cancelBtn.Click += CancelBtn_Click;
