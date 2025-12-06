@@ -124,9 +124,28 @@ var
 begin
   Result := '';
   
-  // Tìm uninstall string cho Inno Setup app
+  // Tìm uninstall string cho Inno Setup app (thử nhiều registry key)
+  // Key có thể là AppName hoặc AppName_is1
+  if RegQueryStringValue(HKLM, 
+       'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}', 
+       'UninstallString', UninstallPath) then
+  begin
+    Result := UninstallPath;
+    Exit;
+  end;
+  
+  // Fallback: thử key với _is1
   if RegQueryStringValue(HKLM, 
        'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\CPU Temp Monitor_is1', 
+       'UninstallString', UninstallPath) then
+  begin
+    Result := UninstallPath;
+    Exit;
+  end;
+  
+  // Thử trong HKCU nếu cài per-user
+  if RegQueryStringValue(HKCU, 
+       'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}', 
        'UninstallString', UninstallPath) then
   begin
     Result := UninstallPath;
@@ -170,7 +189,16 @@ var
   UninstallResult: Integer;
   UninstallStr: String;
   InstallPath: String;
+  IsAutoUpdate: Boolean;
 begin
+  // Check nếu được gọi từ auto-update (parameter /AUTOUPDATE)
+  IsAutoUpdate := False;
+  if ParamCount > 0 then
+  begin
+    if Uppercase(ParamStr(1)) = '/AUTOUPDATE' then
+      IsAutoUpdate := True;
+  end;
+
   // Kiểm tra .NET trước
   if not IsDotNetInstalled() then
   begin
@@ -185,34 +213,62 @@ begin
   // Kiểm tra xem app đã cài chưa
   if IsAppAlreadyInstalled() then
   begin
-    if MsgBox('CPU Temp Monitor đã được cài đặt trên máy tính này.' + #13#10#13#10 + 
+    // Nếu là auto-update, tự động gỡ cài đặt không hỏi
+    if IsAutoUpdate or 
+       (MsgBox('CPU Temp Monitor đã được cài đặt trên máy tính này.' + #13#10#13#10 + 
               'Bạn phải gỡ cài đặt phiên bản cũ trước khi cài đặt phiên bản mới.' + #13#10#13#10 + 
-              'Nhấn "Có" để gỡ cài đặt app cũ' + #13#10 + 
+              'Nhấn "Có" để tự động gỡ cài đặt app cũ (Recommended)' + #13#10 + 
               'Nhấn "Không" để hủy cài đặt.', 
-              mbConfirmation, MB_YESNO) = IDYES then
+              mbConfirmation, MB_YESNO) = IDYES) then
     begin
-      // Lấy uninstall string từ registry
+      // BƯỚC 1: Đóng app nếu đang chạy
+      Exec('taskkill.exe', '/F /IM CpuTempApp.exe', '', SW_HIDE, ewWaitUntilTerminated, UninstallResult);
+      Sleep(1000); // Đợi 1 giây
+      
+      // BƯỚC 2: Lấy uninstall string từ registry
       UninstallStr := GetUninstallString();
       
       if UninstallStr <> '' then
       begin
-        // Chạy uninstall file trực tiếp
-        ShellExec('', UninstallStr, '/SILENT /NORESTART', '', SW_SHOW, ewWaitUntilTerminated, UninstallResult);
+        // Loại bỏ dấu ngoặc kép nếu có
+        UninstallStr := RemoveQuotes(UninstallStr);
         
-        // Sau khi gỡ xong, hiện thông báo
-        if UninstallResult = 0 then
+        // Chạy uninstall file với VERYSILENT để gỡ hoàn toàn tự động
+        if Exec(UninstallStr, '/VERYSILENT /NORESTART /SUPPRESSMSGBOXES', '', SW_HIDE, ewWaitUntilTerminated, UninstallResult) then
         begin
-          MsgBox('App cũ đã được gỡ cài đặt thành công.' + #13#10 + 
-                 'Vui lòng chạy lại installer này để tiếp tục cài đặt phiên bản mới.', 
-                 mbInformation, MB_OK);
+          Sleep(2000); // Đợi uninstall hoàn tất
+          
+          if UninstallResult = 0 then
+          begin
+            if not IsAutoUpdate then
+            begin
+              MsgBox('Đã gỡ cài đặt app cũ thành công!' + #13#10 + 
+                     'Bây giờ sẽ tiếp tục cài đặt phiên bản mới.', 
+                     mbInformation, MB_OK);
+            end;
+            // Tiếp tục cài đặt - không Abort
+            Exit;
+          end
+          else
+          begin
+            MsgBox('Không thể gỡ cài đặt app cũ (Error code: ' + IntToStr(UninstallResult) + ')' + #13#10 + 
+                   'Vui lòng gỡ cài đặt thủ công rồi chạy lại installer.', 
+                   mbError, MB_OK);
+          end;
+        end
+        else
+        begin
+          MsgBox('Không thể chạy uninstaller.' + #13#10 + 
+                 'Vui lòng gỡ cài đặt thủ công từ Control Panel.', 
+                 mbError, MB_OK);
         end;
       end
       else
       begin
         // Nếu không tìm thấy uninstall string, mở Control Panel
-        MsgBox('Không thể tự động gỡ cài đặt.' + #13#10 + 
-               'Vui lòng mở Control Panel > Programs > Programs and Features' + #13#10 + 
-               'Tìm "CPU Temp Monitor" và gỡ cài đặt thủ công.', 
+        MsgBox('Không tìm thấy thông tin gỡ cài đặt trong Registry.' + #13#10 + 
+               'Vui lòng mở Control Panel > Programs and Features' + #13#10 + 
+               'Tìm "CPU Temp Monitor" và gỡ cài đặt thủ công, sau đó chạy lại installer.', 
                mbInformation, MB_OK);
         ShellExec('open', 'appwiz.cpl', '', '', SW_SHOW, ewNoWait, ErrorCode);
       end;

@@ -218,22 +218,19 @@ namespace CpuTempApp
         {
             try
             {
-                // Close current app before running installer
-                if (Application.OpenForms.Count > 0)
-                {
-                    Application.OpenForms[0]?.Close();
-                }
-                Thread.Sleep(500);
-
-                // Run installer
+                // Run installer with /AUTOUPDATE parameter for silent uninstall
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
                     FileName = installerPath,
+                    Arguments = "/AUTOUPDATE /VERYSILENT /NORESTART", // Silent mode for auto-update
                     UseShellExecute = true,
                     Verb = "runas" // Run as admin
                 };
 
                 Process.Start(psi);
+                
+                // Exit current app to let installer work
+                Application.Exit();
             }
             catch (Exception ex)
             {
