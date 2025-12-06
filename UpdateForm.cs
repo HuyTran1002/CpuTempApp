@@ -28,8 +28,8 @@ namespace CpuTempApp
             this.MaximizeBox = false;
             this.MinimizeBox = false;
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.Width = 500;
-            this.Height = 250;
+            this.Width = 520;
+            this.Height = 300;
 
             httpClient = new HttpClient();
             cancellationTokenSource = new CancellationTokenSource();
@@ -87,9 +87,9 @@ namespace CpuTempApp
             // Download Button
             Button downloadBtn = new Button();
             downloadBtn.Name = "downloadBtn";
-            downloadBtn.Text = "Tải & Cài Đặt";
-            downloadBtn.Location = new Point(120, 180);
-            downloadBtn.Size = new Size(140, 35);
+            downloadBtn.Text = "Update";
+            downloadBtn.Location = new Point(140, 200);
+            downloadBtn.Size = new Size(120, 35);
             downloadBtn.BackColor = Color.FromArgb(0, 120, 215);
             downloadBtn.ForeColor = Color.White;
             downloadBtn.Font = new Font("Segoe UI", 10, FontStyle.Bold);
@@ -99,8 +99,8 @@ namespace CpuTempApp
             // Cancel Button
             Button cancelBtn = new Button();
             cancelBtn.Text = "Hủy";
-            cancelBtn.Location = new Point(280, 180);
-            cancelBtn.Size = new Size(100, 35);
+            cancelBtn.Location = new Point(280, 200);
+            cancelBtn.Size = new Size(120, 35);
             cancelBtn.Font = new Font("Segoe UI", 10);
             cancelBtn.Click += CancelBtn_Click;
             this.Controls.Add(cancelBtn);
