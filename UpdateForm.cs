@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Linq;
 
 namespace CpuTempApp
 {
@@ -112,6 +113,31 @@ namespace CpuTempApp
 
             try
             {
+                // Step 1: Close all other instances of the app FIRST
+                Label statusLabel = (Label)this.Controls["statusLabel"];
+                statusLabel.Text = "Đang đóng ứng dụng cũ...";
+                this.Refresh();
+
+                // Close all open forms except this one
+                foreach (Form form in Application.OpenForms.Cast<Form>().ToList())
+                {
+                    if (form != this)
+                    {
+                        try
+                        {
+                            form.Close();
+                        }
+                        catch { }
+                    }
+                }
+
+                // Wait for app to close properly
+                await Task.Delay(1000);
+
+                // Step 2: Now download the new installer
+                statusLabel.Text = "Đang tải phiên bản mới...";
+                this.Refresh();
+
                 // Create temp folder for installer
                 string tempPath = Path.Combine(Path.GetTempPath(), "CpuTempMonitorUpdate");
                 if (!Directory.Exists(tempPath))
@@ -125,6 +151,10 @@ namespace CpuTempApp
                 // After download completes, run installer
                 if (File.Exists(installerPath))
                 {
+                    statusLabel.Text = "Tải xong! Đang cài đặt...";
+                    this.Refresh();
+                    await Task.Delay(1000);
+                    
                     // Close the update form and run installer
                     this.DialogResult = DialogResult.OK;
                     RunInstaller();
