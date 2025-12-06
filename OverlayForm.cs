@@ -44,8 +44,7 @@ namespace CpuTempApp
         private Label cpuLabel;
         private Label gpuLabel;
         private Computer computer;
-        private CancellationTokenSource? cts;
-        private Task? pollTask;
+        private System.Windows.Forms.Timer pollTimer;
         private volatile bool settingsChanged = false;
         private float? lastCpu;
         private float? lastGpu;
@@ -175,14 +174,17 @@ namespace CpuTempApp
             var screenBounds = Screen.PrimaryScreen.Bounds;
             Location = new Point((screenBounds.Width - this.Width) / 2, 0);
 
-            // init hardware and start background poll loop
+            // init hardware and start timer-based polling
             computer = new Computer { IsCpuEnabled = AppSettings.ShowCpu, IsGpuEnabled = AppSettings.ShowGpu };
             try { computer.Open(); } catch { }
 
             AppSettings.SettingsChanged += OnSettingsChanged;
 
-            cts = new CancellationTokenSource();
-            pollTask = Task.Run(() => PollLoopAsync(cts.Token));
+            // Use Windows Forms Timer for reliable polling
+            pollTimer = new System.Windows.Forms.Timer();
+            pollTimer.Interval = ActiveIntervalMs;
+            pollTimer.Tick += PollTimer_Tick;
+            pollTimer.Start();
         }
 
         // Write CPU/GPU temperature sensors only to a temp file
@@ -304,31 +306,29 @@ namespace CpuTempApp
             catch { }
         }
 
-        private async Task PollLoopAsync(CancellationToken token)
+        private void PollTimer_Tick(object? sender, EventArgs e)
         {
             try
             {
-                while (!token.IsCancellationRequested)
+                if (settingsChanged)
                 {
-                    if (settingsChanged)
-                    {
-                        settingsChanged = false;
-                        try { computer?.Close(); } catch { }
-                        computer = new Computer { IsCpuEnabled = AppSettings.ShowCpu, IsGpuEnabled = AppSettings.ShowGpu };
-                        try { computer.Open(); } catch { }
-                    }
+                    settingsChanged = false;
+                    try { computer?.Close(); } catch { }
+                    computer = new Computer { IsCpuEnabled = AppSettings.ShowCpu, IsGpuEnabled = AppSettings.ShowGpu };
+                    try { computer.Open(); } catch { }
+                }
 
-                    if (!AppSettings.ShowCpu && !AppSettings.ShowGpu)
+                if (!AppSettings.ShowCpu && !AppSettings.ShowGpu)
+                {
+                    // nothing to show — clear labels
+                    if (lastCpu != null || lastGpu != null)
                     {
-                        // nothing to show — clear labels if needed and sleep longer
-                        if (lastCpu != null || lastGpu != null)
-                        {
-                            lastCpu = null; lastGpu = null;
-                            try { BeginInvoke((Action)(() => { cpuLabel.Text = ""; gpuLabel.Text = ""; })); } catch { }
-                        }
-                        await Task.Delay(IdleIntervalMs, token).ContinueWith(_ => { });
-                        continue;
+                        lastCpu = null; lastGpu = null;
+                        cpuLabel.Text = "";
+                        gpuLabel.Text = "";
                     }
+                    return;
+                }
 
                     float? cpuMax = null;
                     float? gpuMax = null;
@@ -347,12 +347,12 @@ namespace CpuTempApp
                     }
                     catch { }
 
-                    // Apply smoothing to both CPU and GPU for stable readings
-                    float? displayCpu = null;
-                    float? displayGpu = null;
-                    
-                    // CPU: Apply moving average smoothing
-                    if (cpuMax.HasValue)
+                // Apply smoothing to both CPU and GPU for stable readings
+                float? displayCpu = null;
+                float? displayGpu = null;
+                
+                // CPU: Apply moving average smoothing
+                if (cpuMax.HasValue)
                     {
                         cpuBuffer.Enqueue(cpuMax.Value);
                         if (cpuBuffer.Count > 5) cpuBuffer.Dequeue();
@@ -405,84 +405,75 @@ namespace CpuTempApp
                         }
                     }
 
-                    // update UI only when values changed
-                    var cpuChanged = !NullableEquals(displayCpu, lastCpu);
-                    var gpuChanged = !NullableEquals(displayGpu, lastGpu);
+                // update UI only when values changed
+                var cpuChanged = !NullableEquals(displayCpu, lastCpu);
+                var gpuChanged = !NullableEquals(displayGpu, lastGpu);
 
-                    if (cpuChanged || gpuChanged)
+                if (cpuChanged || gpuChanged)
+                {
+                    lastCpu = displayCpu; lastGpu = displayGpu;
+                    try
                     {
-                        lastCpu = displayCpu; lastGpu = displayGpu;
-                        try
+                        // Calculate position BEFORE setting text
+                        int cpuWidth = 0;
+                        if (AppSettings.ShowCpu && displayCpu.HasValue)
                         {
-                            BeginInvoke((Action)(() =>
+                            string cpuText = $"CPU: {displayCpu.Value:F1}°C";
+                            using (Graphics g = this.CreateGraphics())
                             {
-                                // Calculate position BEFORE setting text
-                                int cpuWidth = 0;
-                                if (AppSettings.ShowCpu && displayCpu.HasValue)
-                                {
-                                    string cpuText = $"CPU: {displayCpu.Value:F1}°C";
-                                    using (Graphics g = this.CreateGraphics())
-                                    {
-                                        SizeF size = g.MeasureString(cpuText, cpuLabel.Font);
-                                        cpuWidth = (int)Math.Ceiling(size.Width);
-                                    }
-                                }
-                                
-                                if (AppSettings.ShowCpu)
-                                {
-                                    cpuLabel.Text = displayCpu.HasValue ? $"CPU: {displayCpu.Value:F1}°C" : "CPU: N/A";
-                                    cpuLabel.Visible = true;
-                                }
-                                else
-                                {
-                                    cpuLabel.Text = "";
-                                    cpuLabel.Visible = false;
-                                }
-
-                                if (AppSettings.ShowGpu)
-                                {
-                                    gpuLabel.Text = displayGpu.HasValue ? $"GPU: {displayGpu.Value:F1}°C" : "GPU: N/A";
-                                    gpuLabel.Visible = true;
-                                }
-                                else
-                                {
-                                    gpuLabel.Text = "";
-                                    gpuLabel.Visible = false;
-                                }
-                                
-                                // Dynamically position GPU label based on CPU label width + spacing
-                                if (AppSettings.ShowCpu && AppSettings.ShowGpu)
-                                {
-                                    gpuLabel.Location = new Point(cpuWidth > 0 ? cpuWidth + 10 : cpuLabel.Width + 10, 0);
-                                }
-                                else if (AppSettings.ShowGpu)
-                                {
-                                    gpuLabel.Location = new Point(0, 0);
-                                }
-                                
-                                // Update form width to fit both labels
-                                int formWidth = 10; // padding
-                                if (AppSettings.ShowCpu)
-                                    formWidth += cpuLabel.Width;
-                                if (AppSettings.ShowGpu)
-                                {
-                                    if (AppSettings.ShowCpu)
-                                        formWidth += 10 + gpuLabel.Width; // spacing + GPU width
-                                    else
-                                        formWidth += gpuLabel.Width;
-                                }
-                                this.Width = Math.Max(formWidth, 150);
-                            }));
+                                SizeF size = g.MeasureString(cpuText, cpuLabel.Font);
+                                cpuWidth = (int)Math.Ceiling(size.Width);
+                            }
                         }
-                        catch { }
-                    }
+                        
+                        if (AppSettings.ShowCpu)
+                        {
+                            cpuLabel.Text = displayCpu.HasValue ? $"CPU: {displayCpu.Value:F1}°C" : "CPU: N/A";
+                            cpuLabel.Visible = true;
+                        }
+                        else
+                        {
+                            cpuLabel.Text = "";
+                            cpuLabel.Visible = false;
+                        }
 
-                    // choose interval: faster when overlay visible, slower otherwise
-                    var interval = this.Visible ? ActiveIntervalMs : IdleIntervalMs;
-                    await Task.Delay(interval, token).ContinueWith(_ => { });
+                        if (AppSettings.ShowGpu)
+                        {
+                            gpuLabel.Text = displayGpu.HasValue ? $"GPU: {displayGpu.Value:F1}°C" : "GPU: N/A";
+                            gpuLabel.Visible = true;
+                        }
+                        else
+                        {
+                            gpuLabel.Text = "";
+                            gpuLabel.Visible = false;
+                        }
+                        
+                        // Dynamically position GPU label based on CPU label width + spacing
+                        if (AppSettings.ShowCpu && AppSettings.ShowGpu)
+                        {
+                            gpuLabel.Location = new Point(cpuWidth > 0 ? cpuWidth + 10 : cpuLabel.Width + 10, 0);
+                        }
+                        else if (AppSettings.ShowGpu)
+                        {
+                            gpuLabel.Location = new Point(0, 0);
+                        }
+                        
+                        // Update form width to fit both labels
+                        int formWidth = 10; // padding
+                        if (AppSettings.ShowCpu)
+                            formWidth += cpuLabel.Width;
+                        if (AppSettings.ShowGpu)
+                        {
+                            if (AppSettings.ShowCpu)
+                                formWidth += 10 + gpuLabel.Width; // spacing + GPU width
+                            else
+                                formWidth += gpuLabel.Width;
+                        }
+                        this.Width = Math.Max(formWidth, 150);
+                    }
+                    catch { }
                 }
             }
-            catch (OperationCanceledException) { }
             catch { }
         }
 
@@ -679,17 +670,11 @@ namespace CpuTempApp
                 return;
             }
             
-            // Clean up: stop poll loop, close computer
+            // Clean up: stop timer, close computer
             try
             {
-                if (cts != null)
-                {
-                    try { cts.Cancel(); } catch { }
-                }
-                if (pollTask != null)
-                {
-                    try { pollTask.Wait(500); } catch { }
-                }
+                pollTimer?.Stop();
+                pollTimer?.Dispose();
             }
             catch { }
 
