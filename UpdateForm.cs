@@ -113,28 +113,7 @@ namespace CpuTempApp
 
             try
             {
-                // Step 1: Close all other instances of the app FIRST
                 Label statusLabel = (Label)this.Controls["statusLabel"];
-                statusLabel.Text = "Đang đóng ứng dụng cũ...";
-                this.Refresh();
-
-                // Close all open forms except this one
-                foreach (Form form in Application.OpenForms.Cast<Form>().ToList())
-                {
-                    if (form != this)
-                    {
-                        try
-                        {
-                            form.Close();
-                        }
-                        catch { }
-                    }
-                }
-
-                // Wait for app to close properly
-                await Task.Delay(1000);
-
-                // Step 2: Now download the new installer
                 statusLabel.Text = "Đang tải phiên bản mới...";
                 this.Refresh();
 
@@ -145,20 +124,18 @@ namespace CpuTempApp
 
                 installerPath = Path.Combine(tempPath, "CpuTempSetup.exe");
 
-                // Download installer
+                // Step 1: Download installer FIRST
                 await DownloadFileAsync(downloadUrl, installerPath);
 
-                // After download completes, run installer
+                // Step 2: After download completes, run installer
                 if (File.Exists(installerPath))
                 {
-                    statusLabel.Text = "Tải xong! Đang cài đặt...";
+                    statusLabel.Text = "Tải xong! Đang khởi động cài đặt...";
                     this.Refresh();
-                    await Task.Delay(1000);
+                    await Task.Delay(500);
                     
-                    // Close the update form and run installer
-                    this.DialogResult = DialogResult.OK;
+                    // Run installer (it will auto-kill app, uninstall old, install new)
                     RunInstaller();
-                    this.Close();
                 }
             }
             catch (OperationCanceledException)
@@ -231,6 +208,7 @@ namespace CpuTempApp
                 
                 // Exit current app to let installer work
                 Application.Exit();
+                Environment.Exit(0); // Force immediate termination
             }
             catch (Exception ex)
             {
