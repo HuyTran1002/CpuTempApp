@@ -30,7 +30,7 @@ namespace CpuTempApp
         {
             Text = "CPU Temp Monitor - Settings";
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(420, 280);
+            ClientSize = new Size(400, 300);
             FormBorderStyle = FormBorderStyle.None;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -45,8 +45,8 @@ namespace CpuTempApp
                 ForeColor = ColorAccent,
                 BackColor = ColorBackground,
                 FlatStyle = FlatStyle.Flat,
-                Size = new Size(40, 40),
-                Location = new Point(ClientSize.Width - 45, 5),
+                Size = new Size(35, 35),
+                Location = new Point(ClientSize.Width - 40, 5),
                 Cursor = Cursors.Hand
             };
             btnClose.FlatAppearance.BorderSize = 0;
@@ -61,36 +61,21 @@ namespace CpuTempApp
             };
             Controls.Add(btnClose);
 
-            // Title
-            var titleLabel = new Label
-            {
-                Text = "",
-                Font = new Font("Segoe UI", 18, FontStyle.Bold),
-                ForeColor = ColorAccent,
-                BackColor = ColorBackground,
-                Dock = DockStyle.Top,
-                Height = 40,
-                TextAlign = ContentAlignment.MiddleLeft,
-                Padding = new Padding(20, 0, 0, 0)
-            };
-            Controls.Add(titleLabel);
-
-            // Main Panel
+            // Main Settings Panel - Centered & Compact
             var mainPanel = new Panel
             {
                 BackColor = ColorPanel,
-                Dock = DockStyle.Top,
-                Height = 160,
-                Margin = new Padding(15, 5, 15, 10)
+                Location = new Point(15, 45),
+                Size = new Size(370, 170),
+                Padding = new Padding(18, 15, 18, 15)
             };
-            mainPanel.Location = new Point(15, 50);
 
             // CPU Checkbox
             chkCpu = new CheckBox
             {
                 Text = "Display CPU Temperature",
-                Location = new Point(20, 15),
-                Size = new Size(300, 24),
+                Location = new Point(18, 12),
+                Size = new Size(330, 22),
                 Font = new Font("Segoe UI", 10, FontStyle.Regular),
                 ForeColor = ColorText,
                 BackColor = ColorPanel,
@@ -102,8 +87,8 @@ namespace CpuTempApp
             chkGpu = new CheckBox
             {
                 Text = "Display GPU Temperature",
-                Location = new Point(20, 45),
-                Size = new Size(300, 24),
+                Location = new Point(18, 40),
+                Size = new Size(330, 22),
                 Font = new Font("Segoe UI", 10, FontStyle.Regular),
                 ForeColor = ColorText,
                 BackColor = ColorPanel,
@@ -111,13 +96,13 @@ namespace CpuTempApp
                 Appearance = Appearance.Normal
             };
 
-            // Color Picker
+            // Color Section - Horizontal Layout
             var colorLabel = new Label
             {
-                Text = "Text Color:",
-                Location = new Point(20, 80),
-                Size = new Size(80, 24),
-                Font = new Font("Segoe UI", 10, FontStyle.Regular),
+                Text = "Color:",
+                Location = new Point(18, 72),
+                Size = new Size(50, 28),
+                Font = new Font("Segoe UI", 9, FontStyle.Regular),
                 ForeColor = ColorText,
                 BackColor = ColorPanel,
                 TextAlign = ContentAlignment.MiddleLeft
@@ -125,9 +110,9 @@ namespace CpuTempApp
 
             btnColorPicker = new Button
             {
-                Text = "Pick Color",
-                Location = new Point(110, 80),
-                Size = new Size(100, 28),
+                Text = "Pick",
+                Location = new Point(72, 72),
+                Size = new Size(60, 28),
                 Font = new Font("Segoe UI", 9, FontStyle.Bold),
                 BackColor = ColorButton,
                 ForeColor = Color.White,
@@ -139,17 +124,17 @@ namespace CpuTempApp
             pnlColorPreview = new Panel
             {
                 BackColor = AppSettings.TextColor,
-                Location = new Point(220, 80),
+                Location = new Point(138, 72),
                 Size = new Size(60, 28),
                 BorderStyle = BorderStyle.FixedSingle
             };
 
-            // Edit Position button
+            // Edit Position button - Right aligned
             btnEditPosition = new Button
             {
                 Text = "Edit Position",
-                Location = new Point(20, 120),
-                Size = new Size(120, 32),
+                Location = new Point(250, 72),
+                Size = new Size(98, 28),
                 Font = new Font("Segoe UI", 9, FontStyle.Bold),
                 BackColor = ColorButton,
                 ForeColor = Color.White,
@@ -166,20 +151,19 @@ namespace CpuTempApp
             mainPanel.Controls.Add(btnEditPosition);
             Controls.Add(mainPanel);
 
-            // Button Panel
+            // Bottom Button Panel - Centered
             var buttonPanel = new Panel
             {
                 BackColor = ColorBackground,
-                Dock = DockStyle.Bottom,
-                Height = 60,
-                Padding = new Padding(20)
+                Location = new Point(0, 220),
+                Size = new Size(ClientSize.Width, 80),
+                Padding = new Padding(0, 12, 0, 12)
             };
 
             btnApply = new Button
             {
                 Text = "APPLY",
-                Size = new Size(100, 36),
-                Location = new Point(120, 12),
+                Size = new Size(95, 38),
                 Font = new Font("Segoe UI", 10, FontStyle.Bold),
                 BackColor = ColorAccent,
                 ForeColor = ColorBackground,
@@ -188,12 +172,12 @@ namespace CpuTempApp
                 Cursor = Cursors.Hand
             };
             btnApply.FlatAppearance.BorderSize = 0;
+            btnApply.Location = new Point((ClientSize.Width / 2) - 105, 14);
 
             btnCancel = new Button
             {
                 Text = "HIDE",
-                Size = new Size(100, 36),
-                Location = new Point(230, 12),
+                Size = new Size(95, 38),
                 Font = new Font("Segoe UI", 10, FontStyle.Bold),
                 BackColor = Color.FromArgb(150, 50, 50),
                 ForeColor = Color.White,
@@ -202,6 +186,7 @@ namespace CpuTempApp
                 Cursor = Cursors.Hand
             };
             btnCancel.FlatAppearance.BorderSize = 0;
+            btnCancel.Location = new Point((ClientSize.Width / 2) + 10, 14);
 
             buttonPanel.Controls.Add(btnApply);
             buttonPanel.Controls.Add(btnCancel);
@@ -230,6 +215,10 @@ namespace CpuTempApp
             btnColorPicker.MouseLeave += (s, e) => { btnColorPicker.BackColor = ColorButton; };
             btnEditPosition.MouseEnter += (s, e) => { btnEditPosition.BackColor = ColorButtonHover; };
             btnEditPosition.MouseLeave += (s, e) => { btnEditPosition.BackColor = ColorButton; };
+            btnApply.MouseEnter += (s, e) => { btnApply.BackColor = Color.FromArgb(0, 220, 180); };
+            btnApply.MouseLeave += (s, e) => { btnApply.BackColor = ColorAccent; };
+            btnCancel.MouseEnter += (s, e) => { btnCancel.BackColor = Color.FromArgb(180, 60, 60); };
+            btnCancel.MouseLeave += (s, e) => { btnCancel.BackColor = Color.FromArgb(150, 50, 50); };
 
             // Create tray icon and overlay
             CreateTrayIcon();
