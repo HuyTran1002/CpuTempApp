@@ -17,6 +17,10 @@ namespace CpuTempApp
                 if (welcome.ShowDialog() != DialogResult.OK) return;
             }
             
+            // Start independent sensor service (before creating UI)
+            // This thread won't be suspended by fullscreen apps
+            SensorService.Start(AppSettings.ShowCpu, AppSettings.ShowGpu);
+            
             // Check for updates on startup (async, non-blocking)
             Task.Run(async () =>
             {
@@ -40,8 +44,16 @@ namespace CpuTempApp
                 catch { }
             });
             
-            // run ControlForm as main window; it will create the overlay and tray
-            Application.Run(new ControlForm());
+            try
+            {
+                // run ControlForm as main window; it will create the overlay and tray
+                Application.Run(new ControlForm());
+            }
+            finally
+            {
+                // Stop sensor service on app exit
+                SensorService.Stop();
+            }
         }
     }
 }

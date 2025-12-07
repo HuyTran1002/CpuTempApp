@@ -40,10 +40,8 @@ namespace CpuTempApp
         private const uint SWP_NOMOVE = 0x0002;
         private const uint SWP_SHOWWINDOW = 0x0040;
         private const uint SWP_NOACTIVATE = 0x0010;
-
         private Label cpuLabel;
         private Label gpuLabel;
-        private Computer computer;
         private System.Threading.Timer? pollTimer;
         private System.Threading.Timer? topmostTimer;
         private volatile bool settingsChanged = false;
@@ -54,13 +52,6 @@ namespace CpuTempApp
         private Queue<float> cpuBuffer = new Queue<float>(2); // minimal buffer (2 samples) to reduce lag
         private Queue<float> gpuBuffer = new Queue<float>(2); // minimal buffer (2 samples) to reduce lag
         private const float SpikeThreshold = 5.0f; // reject outlier spikes >5°C
-        
-        // Background sensor reading thread (independent of UI thread)
-        private Thread? sensorThread;
-        private volatile bool shouldRunSensorThread = true;
-        private float? cachedCpuTemp = null;
-        private float? cachedGpuTemp = null;
-        private object sensorLock = new object();
         
         // For dragging the overlay
         private bool isDragging = false;
@@ -158,9 +149,6 @@ namespace CpuTempApp
             gpuLabel.MouseUp += OverlayForm_MouseUp;
             gpuLabel.MouseEnter += OverlayForm_MouseEnter;
             gpuLabel.MouseLeave += OverlayForm_MouseLeave;
-            
-            // Force temperature update when window regains focus (fixes tab in/out issue)
-            this.Activated += (s, e) => ForceTemperatureUpdate();
 
             // Set text and position labels
             cpuLabel.Text = "CPU";
@@ -189,17 +177,7 @@ namespace CpuTempApp
             var screenBounds = Screen.PrimaryScreen.Bounds;
             Location = new Point((screenBounds.Width - this.Width) / 2, 0);
 
-            // init hardware and start timer-based polling
-            computer = new Computer { IsCpuEnabled = AppSettings.ShowCpu, IsGpuEnabled = AppSettings.ShowGpu };
-            try { computer.Open(); } catch { }
-
             AppSettings.SettingsChanged += OnSettingsChanged;
-
-            // Start background sensor thread (independent of UI thread, won't be suspended by fullscreen apps)
-            shouldRunSensorThread = true;
-            sensorThread = new Thread(SensorThreadProc) { IsBackground = true, Priority = ThreadPriority.BelowNormal };
-            sensorThread.Start();
-
             // Use Threading Timer to avoid suspension during fullscreen
             pollTimer = new System.Threading.Timer(PollTimerCallback, null, 0, ActiveIntervalMs);
             
@@ -207,71 +185,11 @@ namespace CpuTempApp
             topmostTimer = new System.Threading.Timer(ReassertTopmost, null, 500, 500);
         }
 
-        // Write CPU/GPU temperature sensors only to a temp file
-        public string DumpSensorInfo()
-        {
-            var sb = new StringBuilder();
-            try
-            {
-                if (computer == null)
-                {
-                    sb.AppendLine("No LibreHardwareMonitor Computer instance available.");
-                }
-                else
-                {
-                    foreach (var hw in computer.Hardware)
-                    {
-                        DumpTemperatureSensors(hw, sb, 0);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                sb.AppendLine("Exception while dumping sensors: " + ex);
-            }
-
-            var path = Path.Combine(Path.GetTempPath(), "CpuTempApp-sensors.txt");
-            try { File.WriteAllText(path, sb.ToString(), Encoding.UTF8); } catch { }
-            return path;
-        }
-
-        private void DumpTemperatureSensors(IHardware hw, StringBuilder sb, int indent)
-        {
-            var pad = new string(' ', indent * 2);
-            
-            // Only show CPU and GPU hardware
-            if (hw.HardwareType == HardwareType.Cpu || hw.HardwareType == HardwareType.GpuAmd || 
-                hw.HardwareType == HardwareType.GpuNvidia || hw.HardwareType == HardwareType.GpuIntel)
-            {
-                sb.AppendLine($"{pad}{hw.HardwareType}: {hw.Name}");
-                try
-                {
-                    foreach (var s in hw.Sensors)
-                    {
-                        // Only show temperature sensors
-                        if (s.SensorType == SensorType.Temperature)
-                        {
-                            sb.AppendLine($"{pad}  {s.Name}: {s.Value?.ToString("F1") ?? "N/A"}°C");
-                        }
-                    }
-                }
-                catch { }
-            }
-
-            try
-            {
-                foreach (var sh in hw.SubHardware)
-                {
-                    DumpTemperatureSensors(sh, sb, indent + 1);
-                }
-            }
-            catch { }
-        }
-
+        
         private void OnSettingsChanged()
         {
-            // signal poll loop to reconfigure computer on next iteration
-            settingsChanged = true;
+            // Update SensorService with new settings
+            SensorService.UpdateConfig(AppSettings.ShowCpu, AppSettings.ShowGpu);
             
             // Update label colors and visibility when settings change
             try
@@ -339,71 +257,7 @@ namespace CpuTempApp
             catch { }
         }
 
-        // Background thread: Read sensor data independently (won't be suspended by fullscreen apps)
-        private void SensorThreadProc()
-        {
-            while (shouldRunSensorThread)
-            {
-                try
-                {
-                    if (computer != null && !settingsChanged)
-                    {
-                        float? cpuTemp = null;
-                        float? gpuTemp = null;
-
-                        try
-                        {
-                            foreach (var hw in computer.Hardware)
-                            {
-                                try { hw.Update(); } catch { }
-                                bool cpuPreferred = false, gpuPreferred = false;
-                                TraverseHardware(hw, ref cpuTemp, ref gpuTemp, ref cpuPreferred, ref gpuPreferred);
-                            }
-                        }
-                        catch { }
-
-                        // Cache the sensor readings
-                        lock (sensorLock)
-                        {
-                            cachedCpuTemp = cpuTemp;
-                            cachedGpuTemp = gpuTemp;
-                        }
-                    }
-
-                    Thread.Sleep(ActiveIntervalMs);  // 1 second polling
-                }
-                catch { }
-            }
-        }
-
-        // Force immediate temperature update when window regains focus
-        private void ForceTemperatureUpdate()
-        {
-            // Queue an immediate update on the UI thread
-            if (!this.IsDisposed && this.IsHandleCreated)
-            {
-                try
-                {
-                    this.BeginInvoke((Action)(() =>
-                    {
-                        // This will trigger a fresh read of all sensors
-                        if (computer != null)
-                        {
-                            try
-                            {
-                                foreach (var hw in computer.Hardware)
-                                {
-                                    try { hw.Update(); } catch { }
-                                }
-                            }
-                            catch { }
-                        }
-                    }));
-                }
-                catch { }
-            }
-        }
-
+        
         private void PollTimerCallback(object? state)
         {
             // Run on UI thread using BeginInvoke
@@ -416,13 +270,7 @@ namespace CpuTempApp
                 {
                     try
                     {
-                        if (settingsChanged)
-                        {
-                            settingsChanged = false;
-                            try { computer?.Close(); } catch { }
-                            computer = new Computer { IsCpuEnabled = AppSettings.ShowCpu, IsGpuEnabled = AppSettings.ShowGpu };
-                            try { computer.Open(); } catch { }
-                        }
+                        // Settings are now handled by SensorService
 
                         if (!AppSettings.ShowCpu && !AppSettings.ShowGpu)
                         {
@@ -436,15 +284,10 @@ namespace CpuTempApp
                             return;
                         }
 
-                        // Get cached sensor values from background thread
-                        float? cpuMax = null;
-                        float? gpuMax = null;
                         
-                        lock (sensorLock)
-                        {
-                            cpuMax = cachedCpuTemp;
-                            gpuMax = cachedGpuTemp;
-                        }
+                        // Get sensor values from independent SensorService (won't be suspended by fullscreen)
+                        float? cpuMax = SensorService.GetCachedCpuTemp();
+                        float? gpuMax = SensorService.GetCachedGpuTemp();
 
                         // Apply smoothing to both CPU and GPU for stable readings
                         float? displayCpu = null;
@@ -454,9 +297,7 @@ namespace CpuTempApp
                         if (cpuMax.HasValue)
                         {
                             cpuBuffer.Enqueue(cpuMax.Value);
-                            if (cpuBuffer.Count > 5) cpuBuffer.Dequeue();
-                            
-                            // Reject obvious spikes
+                            if (cpuBuffer.Count > 5) cpuBuffer.Dequeue();                            // Reject obvious spikes
                             if (lastCpu.HasValue)
                             {
                                 float diff = Math.Abs(cpuMax.Value - lastCpu.Value);
@@ -586,160 +427,7 @@ namespace CpuTempApp
             return Math.Abs(a.Value - b.Value) < 0.5f; // faster response like AIDA64
         }
 
-        private float? FindSensorValueByName(string name)
-        {
-            try
-            {
-                if (computer == null) return null;
-                var target = name.ToLowerInvariant();
-                foreach (var hw in computer.Hardware)
-                {
-                    try
-                    {
-                        foreach (var s in hw.Sensors)
-                        {
-                            if (s.SensorType != LibreHardwareMonitor.Hardware.SensorType.Temperature) continue;
-                            var sname = (s.Name ?? string.Empty).ToLowerInvariant();
-                            if (sname == target || sname.Contains(target) || target.Contains(sname))
-                            {
-                                return s.Value;
-                            }
-                        }
-                        foreach (var sh in hw.SubHardware)
-                        {
-                            foreach (var s in sh.Sensors)
-                            {
-                                if (s.SensorType != LibreHardwareMonitor.Hardware.SensorType.Temperature) continue;
-                                var sname = (s.Name ?? string.Empty).ToLowerInvariant();
-                                if (sname == target || sname.Contains(target) || target.Contains(sname))
-                                {
-                                    return s.Value;
-                                }
-                            }
-                        }
-                    }
-                    catch { }
-                }
-            }
-            catch { }
-            return null;
-        }
-
-        // polling handled on background thread in PollLoopAsync
-
-        private void TraverseHardware(IHardware hardware, ref float? cpuMax, ref float? gpuMax, ref bool cpuPreferred, ref bool gpuPreferred)
-        {
-            try
-            {
-                List<float>? cpuCoreTemps = null;
-                float? cpuPackage = null;
-                float? cpuTdie = null;
-                float? cpuCCD = null;
-                
-                foreach (var sensor in hardware.Sensors)
-                {
-                    if (!sensor.Value.HasValue) continue;
-                    if (sensor.SensorType != SensorType.Temperature) continue;
-                    var v = sensor.Value.GetValueOrDefault();
-                    var sname = (sensor.Name ?? string.Empty).ToLowerInvariant();
-
-                    // CPU: prioritize accuracy and real die temperature
-                    if (hardware.HardwareType == HardwareType.Cpu)
-                    {
-                        // AMD: Tdie = real die temperature (no offset), highest priority
-                        if (sname.Contains("tdie") || sname.Equals("cpu die (average)"))
-                        {
-                            cpuTdie = v;
-                        }
-                        // AMD: CCD temperature (chiplet die, very accurate for Ryzen)
-                        else if (sname.Contains("ccd") && sname.Contains("temp"))
-                        {
-                            if (!cpuCCD.HasValue || v > cpuCCD.Value)
-                                cpuCCD = v;
-                        }
-                        // Intel/AMD: Package temperature
-                        // Intel: "CPU Package" is the most accurate single sensor
-                        // AMD: "Tctl" may have offset, but still good fallback
-                        else if (sname.Contains("package") || sname.Contains("tctl"))
-                        {
-                            cpuPackage = v;
-                        }
-                        // Fallback: exact "CPU" sensor or "CPU (Tctl/Tdie)"
-                        else if (sname == "cpu" || sname == "cpu (tctl/tdie)" || sname.Contains("cpu package"))
-                        {
-                            if (!cpuPackage.HasValue) // Don't override if already have package
-                                cpuPackage = v;
-                        }
-                        // Collect individual core temps for max/average calculation
-                        else if ((sname.Contains("core") || sname.Contains("cpu core")) && !sname.Contains("average"))
-                        {
-                            cpuCoreTemps ??= new List<float>();
-                            cpuCoreTemps.Add(v);
-                        }
-                    }
-                    // GPU: Core temp (phổ biến nhất trên Nvidia/AMD/Intel)
-                    else if (hardware.HardwareType == HardwareType.GpuAmd ||
-                             hardware.HardwareType == HardwareType.GpuNvidia ||
-                             hardware.HardwareType == HardwareType.GpuIntel)
-                    {
-                        // Priority 1: GPU Core/Edge temp (có trên hầu hết laptop gaming)
-                        if (sname.Contains("core") || sname.Contains("edge") || sname.Contains("gpu temperature"))
-                        {
-                            if (!gpuPreferred || !gpuMax.HasValue || v > gpuMax.Value)
-                            {
-                                gpuMax = v;
-                                gpuPreferred = true;
-                            }
-                        }
-                        // Fallback: any GPU temp sensor
-                        else if (!gpuPreferred)
-                        {
-                            if (!gpuMax.HasValue || v > gpuMax.Value) gpuMax = v;
-                        }
-                    }
-                }
-
-                foreach (var sub in hardware.SubHardware)
-                {
-                    TraverseHardware(sub, ref cpuMax, ref gpuMax, ref cpuPreferred, ref gpuPreferred);
-                }
-
-                // CPU: Apply priority logic AFTER collecting all sensors
-                if (hardware.HardwareType == HardwareType.Cpu && !cpuPreferred)
-                {
-                    // Priority 1: Tdie (real die temp, no offset - AMD only)
-                    if (cpuTdie.HasValue)
-                    {
-                        cpuMax = cpuTdie;
-                        cpuPreferred = true;
-                    }
-                    // Priority 2: Package temperature (best for Intel, good for AMD)
-                    // Intel CPUs: CPU Package is the official TDP sensor
-                    // AMD CPUs: Tctl (may have offset, but Package is still accurate enough)
-                    else if (cpuPackage.HasValue)
-                    {
-                        cpuMax = cpuPackage;
-                        cpuPreferred = true;
-                    }
-                    // Priority 3: CCD max (chiplet die - AMD Ryzen specific)
-                    else if (cpuCCD.HasValue)
-                    {
-                        cpuMax = cpuCCD;
-                        cpuPreferred = true;
-                    }
-                    // Priority 4: Maximum core temperature (hottest core)
-                    // Intel: Core temps are very accurate and reliable
-                    // AMD: Core temps can be used as last resort
-                    else if (cpuCoreTemps != null && cpuCoreTemps.Count > 0)
-                    {
-                        cpuMax = cpuCoreTemps.Max(); // Use MAX to detect thermal throttling
-                        cpuPreferred = true;
-                    }
-                }
-            }
-            catch { }
-        }
-
+        
         // Overlay does not create a tray icon. ControlForm is the single owner of the tray icon.
 
         // Dragging functionality
@@ -813,13 +501,6 @@ namespace CpuTempApp
                 return;
             }
             
-            // Stop background sensor thread
-            shouldRunSensorThread = false;
-            if (sensorThread != null)
-            {
-                try { sensorThread.Join(2000); } catch { }
-            }
-            
             // Clean up: stop timer, close computer
             try
             {
@@ -830,7 +511,6 @@ namespace CpuTempApp
             }
             catch { }
 
-            try { computer?.Close(); } catch { }
             try { AppSettings.SettingsChanged -= OnSettingsChanged; } catch { }
             base.OnFormClosing(e);
         }

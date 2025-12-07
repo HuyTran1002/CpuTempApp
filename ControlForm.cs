@@ -142,7 +142,6 @@ namespace CpuTempApp
                 // If Cancel, do nothing (keep dialog open)
             }
         }
-
         private void CreateTrayIcon()
         {
             trayMenu = new ContextMenuStrip();
@@ -150,21 +149,8 @@ namespace CpuTempApp
             var checkUpdateItem = new ToolStripMenuItem("Check for Updates", null, async (s, e) => await CheckForUpdatesAsync());
             var dumpItem = new ToolStripMenuItem("Dump sensors", null, (s, e) =>
             {
-                try
-                {
-                    var path = overlay?.DumpSensorInfo();
-                    if (!string.IsNullOrEmpty(path))
-                    {
-                        notifyIcon.ShowBalloonTip(2000, "Sensors dumped", path, ToolTipIcon.Info);
-                        try
-                        {
-                            var psi = new System.Diagnostics.ProcessStartInfo("notepad.exe", $"\"{path}\"") { UseShellExecute = true };
-                            System.Diagnostics.Process.Start(psi);
-                        }
-                        catch { }
-                    }
-                }
-                catch { }
+                // Dump sensors feature removed - now handled by SensorService
+                MessageBox.Show("Sensor diagnostics moved to SensorService (background thread).", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
             });
             var exitItem = new ToolStripMenuItem("Exit", null, (s, e) => ExitApplication());
             trayMenu.Items.Add(openItem);
