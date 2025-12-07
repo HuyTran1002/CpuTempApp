@@ -49,10 +49,10 @@ namespace CpuTempApp
         private volatile bool settingsChanged = false;
         private float? lastCpu;
         private float? lastGpu;
-        private const int ActiveIntervalMs = 1000;  // 1 second polling for stable readings
+        private const int ActiveIntervalMs = 500;   // 500ms polling for responsive updates (2x per second)
         private const int IdleIntervalMs = 5000;   // slower when idle to save CPU
-        private Queue<float> cpuBuffer = new Queue<float>(5); // buffer last 5 readings for smoothing
-        private Queue<float> gpuBuffer = new Queue<float>(5); // buffer last 5 readings for smoothing
+        private Queue<float> cpuBuffer = new Queue<float>(2); // minimal buffer (2 samples) to reduce lag
+        private Queue<float> gpuBuffer = new Queue<float>(2); // minimal buffer (2 samples) to reduce lag
         private const float SpikeThreshold = 5.0f; // reject outlier spikes >5°C
         
         // Background sensor reading thread (independent of UI thread)
