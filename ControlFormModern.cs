@@ -30,22 +30,46 @@ namespace CpuTempApp
         {
             Text = "CPU Temp Monitor - Settings";
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(420, 320);
+            ClientSize = new Size(420, 280);
             FormBorderStyle = FormBorderStyle.None;
             MaximizeBox = false;
             MinimizeBox = false;
             BackColor = ColorBackground;
             DoubleBuffered = true;
 
+            // Close Button (X)
+            var btnClose = new Button
+            {
+                Text = "✕",
+                Font = new Font("Segoe UI", 14, FontStyle.Bold),
+                ForeColor = ColorAccent,
+                BackColor = ColorBackground,
+                FlatStyle = FlatStyle.Flat,
+                Size = new Size(40, 40),
+                Location = new Point(ClientSize.Width - 45, 5),
+                Cursor = Cursors.Hand
+            };
+            btnClose.FlatAppearance.BorderSize = 0;
+            btnClose.Click += (s, e) => 
+            { 
+                var result = MessageBox.Show("Are you sure you want to exit?", "Confirm Exit", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (result == DialogResult.Yes)
+                {
+                    allowClose = true;
+                    Application.Exit();
+                }
+            };
+            Controls.Add(btnClose);
+
             // Title
             var titleLabel = new Label
             {
-                Text = "⚙️ SETTINGS",
+                Text = "",
                 Font = new Font("Segoe UI", 18, FontStyle.Bold),
                 ForeColor = ColorAccent,
                 BackColor = ColorBackground,
                 Dock = DockStyle.Top,
-                Height = 50,
+                Height = 40,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Padding = new Padding(20, 0, 0, 0)
             };
@@ -57,9 +81,9 @@ namespace CpuTempApp
                 BackColor = ColorPanel,
                 Dock = DockStyle.Top,
                 Height = 160,
-                Margin = new Padding(15, 10, 15, 10)
+                Margin = new Padding(15, 5, 15, 10)
             };
-            mainPanel.Location = new Point(15, 60);
+            mainPanel.Location = new Point(15, 50);
 
             // CPU Checkbox
             chkCpu = new CheckBox
@@ -271,6 +295,17 @@ namespace CpuTempApp
                 Visible = true,
                 Text = "CPU Temp Monitor"
             };
+
+            // Try to load the app icon
+            try
+            {
+                string iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "temperature_icon_175973.ico");
+                if (System.IO.File.Exists(iconPath))
+                {
+                    notifyIcon.Icon = new Icon(iconPath);
+                }
+            }
+            catch { }
 
             trayMenu = new ContextMenuStrip();
             trayMenu.Items.Add("Settings", null, (s, e) => ShowSettings());
