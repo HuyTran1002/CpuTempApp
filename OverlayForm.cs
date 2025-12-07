@@ -55,6 +55,13 @@ namespace CpuTempApp
         private Queue<float> gpuBuffer = new Queue<float>(5); // buffer last 5 readings for smoothing
         private const float SpikeThreshold = 5.0f; // reject outlier spikes >5°C
         
+        // Background sensor reading thread (independent of UI thread)
+        private Thread? sensorThread;
+        private volatile bool shouldRunSensorThread = true;
+        private float? cachedCpuTemp = null;
+        private float? cachedGpuTemp = null;
+        private object sensorLock = new object();
+        
         // For dragging the overlay
         private bool isDragging = false;
         private Point dragStartPoint;
@@ -187,6 +194,11 @@ namespace CpuTempApp
             try { computer.Open(); } catch { }
 
             AppSettings.SettingsChanged += OnSettingsChanged;
+
+            // Start background sensor thread (independent of UI thread, won't be suspended by fullscreen apps)
+            shouldRunSensorThread = true;
+            sensorThread = new Thread(SensorThreadProc) { IsBackground = true, Priority = ThreadPriority.BelowNormal };
+            sensorThread.Start();
 
             // Use Threading Timer to avoid suspension during fullscreen
             pollTimer = new System.Threading.Timer(PollTimerCallback, null, 0, ActiveIntervalMs);
@@ -327,6 +339,43 @@ namespace CpuTempApp
             catch { }
         }
 
+        // Background thread: Read sensor data independently (won't be suspended by fullscreen apps)
+        private void SensorThreadProc()
+        {
+            while (shouldRunSensorThread)
+            {
+                try
+                {
+                    if (computer != null && !settingsChanged)
+                    {
+                        float? cpuTemp = null;
+                        float? gpuTemp = null;
+
+                        try
+                        {
+                            foreach (var hw in computer.Hardware)
+                            {
+                                try { hw.Update(); } catch { }
+                                bool cpuPreferred = false, gpuPreferred = false;
+                                TraverseHardware(hw, ref cpuTemp, ref gpuTemp, ref cpuPreferred, ref gpuPreferred);
+                            }
+                        }
+                        catch { }
+
+                        // Cache the sensor readings
+                        lock (sensorLock)
+                        {
+                            cachedCpuTemp = cpuTemp;
+                            cachedGpuTemp = gpuTemp;
+                        }
+                    }
+
+                    Thread.Sleep(ActiveIntervalMs);  // 1 second polling
+                }
+                catch { }
+            }
+        }
+
         // Force immediate temperature update when window regains focus
         private void ForceTemperatureUpdate()
         {
@@ -368,107 +417,100 @@ namespace CpuTempApp
                     try
                     {
                         if (settingsChanged)
-                {
-                    settingsChanged = false;
-                    try { computer?.Close(); } catch { }
-                    computer = new Computer { IsCpuEnabled = AppSettings.ShowCpu, IsGpuEnabled = AppSettings.ShowGpu };
-                    try { computer.Open(); } catch { }
-                }
-
-                if (!AppSettings.ShowCpu && !AppSettings.ShowGpu)
-                {
-                    // nothing to show — clear labels
-                    if (lastCpu != null || lastGpu != null)
-                    {
-                        lastCpu = null; lastGpu = null;
-                        cpuLabel.Text = "";
-                        gpuLabel.Text = "";
-                    }
-                    return;
-                }
-
-                    float? cpuMax = null;
-                    float? gpuMax = null;
-
-                    try
-                    {
-                        if (computer != null)
                         {
-                            foreach (var hw in computer.Hardware)
-                            {
-                                try { hw.Update(); } catch { }
-                                bool cpuPreferred = false, gpuPreferred = false;
-                                TraverseHardware(hw, ref cpuMax, ref gpuMax, ref cpuPreferred, ref gpuPreferred);
-                            }
+                            settingsChanged = false;
+                            try { computer?.Close(); } catch { }
+                            computer = new Computer { IsCpuEnabled = AppSettings.ShowCpu, IsGpuEnabled = AppSettings.ShowGpu };
+                            try { computer.Open(); } catch { }
                         }
-                    }
-                    catch { }
 
-                // Apply smoothing to both CPU and GPU for stable readings
-                float? displayCpu = null;
-                float? displayGpu = null;
-                
-                // CPU: Apply moving average smoothing
-                if (cpuMax.HasValue)
-                    {
-                        cpuBuffer.Enqueue(cpuMax.Value);
-                        if (cpuBuffer.Count > 5) cpuBuffer.Dequeue();
-                        
-                        // Reject obvious spikes
-                        if (lastCpu.HasValue)
+                        if (!AppSettings.ShowCpu && !AppSettings.ShowGpu)
                         {
-                            float diff = Math.Abs(cpuMax.Value - lastCpu.Value);
-                            if (diff > SpikeThreshold)
+                            // nothing to show — clear labels
+                            if (lastCpu != null || lastGpu != null)
                             {
-                                // Spike detected, use last value
-                                displayCpu = lastCpu;
+                                lastCpu = null; lastGpu = null;
+                                cpuLabel.Text = "";
+                                gpuLabel.Text = "";
+                            }
+                            return;
+                        }
+
+                        // Get cached sensor values from background thread
+                        float? cpuMax = null;
+                        float? gpuMax = null;
+                        
+                        lock (sensorLock)
+                        {
+                            cpuMax = cachedCpuTemp;
+                            gpuMax = cachedGpuTemp;
+                        }
+
+                        // Apply smoothing to both CPU and GPU for stable readings
+                        float? displayCpu = null;
+                        float? displayGpu = null;
+                        
+                        // CPU: Apply moving average smoothing
+                        if (cpuMax.HasValue)
+                        {
+                            cpuBuffer.Enqueue(cpuMax.Value);
+                            if (cpuBuffer.Count > 5) cpuBuffer.Dequeue();
+                            
+                            // Reject obvious spikes
+                            if (lastCpu.HasValue)
+                            {
+                                float diff = Math.Abs(cpuMax.Value - lastCpu.Value);
+                                if (diff > SpikeThreshold)
+                                {
+                                    // Spike detected, use last value
+                                    displayCpu = lastCpu;
+                                }
+                                else
+                                {
+                                    // Normal fluctuation, use average
+                                    displayCpu = cpuBuffer.Average();
+                                }
                             }
                             else
                             {
-                                // Normal fluctuation, use average
                                 displayCpu = cpuBuffer.Average();
                             }
                         }
-                        else
-                        {
-                            displayCpu = cpuBuffer.Average();
-                        }
-                    }
-                    
-                    // GPU: Apply moving average smoothing
-                    if (gpuMax.HasValue)
-                    {
-                        gpuBuffer.Enqueue(gpuMax.Value);
-                        if (gpuBuffer.Count > 5) gpuBuffer.Dequeue();
                         
-                        // Reject obvious spikes
-                        if (lastGpu.HasValue)
+                        // GPU: Apply moving average smoothing
+                        if (gpuMax.HasValue)
                         {
-                            float diff = Math.Abs(gpuMax.Value - lastGpu.Value);
-                            if (diff > SpikeThreshold)
+                            gpuBuffer.Enqueue(gpuMax.Value);
+                            if (gpuBuffer.Count > 5) gpuBuffer.Dequeue();
+                            
+                            // Reject obvious spikes
+                            if (lastGpu.HasValue)
                             {
-                                // Spike detected, use last value
-                                displayGpu = lastGpu;
+                                float diff = Math.Abs(gpuMax.Value - lastGpu.Value);
+                                if (diff > SpikeThreshold)
+                                {
+                                    // Spike detected, use last value
+                                    displayGpu = lastGpu;
+                                }
+                                else
+                                {
+                                    // Normal fluctuation, use average
+                                    displayGpu = gpuBuffer.Average();
+                                }
                             }
                             else
                             {
-                                // Normal fluctuation, use average
                                 displayGpu = gpuBuffer.Average();
                             }
                         }
-                        else
+
+                        // update UI only when values changed
+                        var cpuChanged = !NullableEquals(displayCpu, lastCpu);
+                        var gpuChanged = !NullableEquals(displayGpu, lastGpu);
+
+                        if (cpuChanged || gpuChanged)
                         {
-                            displayGpu = gpuBuffer.Average();
-                        }
-                    }
-
-                // update UI only when values changed
-                var cpuChanged = !NullableEquals(displayCpu, lastCpu);
-                var gpuChanged = !NullableEquals(displayGpu, lastGpu);
-
-                if (cpuChanged || gpuChanged)
-                {
-                    lastCpu = displayCpu; lastGpu = displayGpu;
+                            lastCpu = displayCpu; lastGpu = displayGpu;
                     try
                     {
                         // Calculate position BEFORE setting text
@@ -769,6 +811,13 @@ namespace CpuTempApp
                 e.Cancel = true;
                 this.Hide();
                 return;
+            }
+            
+            // Stop background sensor thread
+            shouldRunSensorThread = false;
+            if (sensorThread != null)
+            {
+                try { sensorThread.Join(2000); } catch { }
             }
             
             // Clean up: stop timer, close computer
