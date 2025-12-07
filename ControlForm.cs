@@ -16,7 +16,7 @@ namespace CpuTempApp
         private Button btnEditPosition;
         private NotifyIcon notifyIcon;
         private ContextMenuStrip trayMenu;
-        private OverlayForm overlay;
+        private OverlayFormModern overlay;
         private bool allowClose = false;
 
         public ControlForm()
@@ -72,7 +72,7 @@ namespace CpuTempApp
 
             try
             {
-                overlay = new OverlayForm();
+                overlay = new OverlayFormModern();
                 overlay.Show();
             }
             catch { }
