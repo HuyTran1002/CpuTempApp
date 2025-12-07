@@ -151,6 +151,9 @@ namespace CpuTempApp
             gpuLabel.MouseUp += OverlayForm_MouseUp;
             gpuLabel.MouseEnter += OverlayForm_MouseEnter;
             gpuLabel.MouseLeave += OverlayForm_MouseLeave;
+            
+            // Force temperature update when window regains focus (fixes tab in/out issue)
+            this.Activated += (s, e) => ForceTemperatureUpdate();
 
             // Set text and position labels
             cpuLabel.Text = "CPU";
@@ -322,6 +325,34 @@ namespace CpuTempApp
                 SetWindowPos(this.Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
             }
             catch { }
+        }
+
+        // Force immediate temperature update when window regains focus
+        private void ForceTemperatureUpdate()
+        {
+            // Queue an immediate update on the UI thread
+            if (!this.IsDisposed && this.IsHandleCreated)
+            {
+                try
+                {
+                    this.BeginInvoke((Action)(() =>
+                    {
+                        // This will trigger a fresh read of all sensors
+                        if (computer != null)
+                        {
+                            try
+                            {
+                                foreach (var hw in computer.Hardware)
+                                {
+                                    try { hw.Update(); } catch { }
+                                }
+                            }
+                            catch { }
+                        }
+                    }));
+                }
+                catch { }
+            }
         }
 
         private void PollTimerCallback(object? state)
