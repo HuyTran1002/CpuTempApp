@@ -13,6 +13,7 @@ namespace CpuTempApp
         private Button btnCancel;
         private Button btnColorPicker;
         private Label lblColorPreview;
+        private Button btnEditPosition;
         private NotifyIcon notifyIcon;
         private ContextMenuStrip trayMenu;
         private OverlayForm overlay;
@@ -22,7 +23,7 @@ namespace CpuTempApp
         {
             Text = "Settings";
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(320, 180);
+            ClientSize = new Size(320, 220);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -34,13 +35,17 @@ namespace CpuTempApp
             btnColorPicker = new Button { Text = "Text Color", Size = new Size(100, 28), Location = new Point(16, 76) };
             lblColorPreview = new Label { Size = new Size(40, 28), Location = new Point(124, 76), BackColor = AppSettings.TextColor, BorderStyle = BorderStyle.FixedSingle };
 
-            btnApply = new Button { Text = "Apply", Size = new Size(90, 28), Location = new Point(80, 130), DialogResult = DialogResult.OK };
-            btnCancel = new Button { Text = "Hide", Size = new Size(90, 28), Location = new Point(180, 130), DialogResult = DialogResult.Cancel };
+            // Edit Position button
+            btnEditPosition = new Button { Text = "Edit Position", Size = new Size(100, 28), Location = new Point(16, 114) };
+
+            btnApply = new Button { Text = "Apply", Size = new Size(90, 28), Location = new Point(80, 170), DialogResult = DialogResult.OK };
+            btnCancel = new Button { Text = "Hide", Size = new Size(90, 28), Location = new Point(180, 170), DialogResult = DialogResult.Cancel };
 
             Controls.Add(chkCpu);
             Controls.Add(chkGpu);
             Controls.Add(btnColorPicker);
             Controls.Add(lblColorPreview);
+            Controls.Add(btnEditPosition);
             Controls.Add(btnApply);
             Controls.Add(btnCancel);
 
@@ -81,6 +86,25 @@ namespace CpuTempApp
                 AppSettings.ShowGpu = chkGpu.Checked;
                 // if this form is modal the caller expects it to close
                 if (this.Modal) Close();
+            };
+
+            // Edit Position button - toggle between locked and unlocked
+            btnEditPosition.Click += (s, e) =>
+            {
+                if (overlay != null)
+                {
+                    overlay.isPositionLocked = !overlay.isPositionLocked;
+                    if (overlay.isPositionLocked)
+                    {
+                        btnEditPosition.Text = "Edit Position";
+                        MessageBox.Show("Position locked. Click 'Edit Position' again to unlock for dragging.", "Position Locked", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    else
+                    {
+                        btnEditPosition.Text = "Lock Position";
+                        MessageBox.Show("Position unlocked. You can now drag the overlay to a new position.", "Position Unlocked", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
             };
 
             // Cancel (now "Hide") should minimize to tray

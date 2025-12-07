@@ -59,6 +59,7 @@ namespace CpuTempApp
         private bool isDragging = false;
         private Point dragStartPoint;
         private double originalOpacity = 1.0; // Track original opacity
+        public bool isPositionLocked = true;  // Position locked by default (prevent accidental drag)
 
         // Overlay no longer creates a tray icon; ControlForm owns the tray icon.
 
@@ -671,7 +672,8 @@ namespace CpuTempApp
         // Dragging functionality
         private void OverlayForm_MouseDown(object? sender, MouseEventArgs e)
         {
-            if (e.Button == MouseButtons.Left)
+            // Only allow dragging when position is unlocked
+            if (e.Button == MouseButtons.Left && !isPositionLocked)
             {
                 isDragging = true;
                 dragStartPoint = e.Location;
@@ -703,8 +705,8 @@ namespace CpuTempApp
         
         private void OverlayForm_MouseEnter(object? sender, EventArgs e)
         {
-            // Slight brightness increase when hovering to show it's interactive
-            if (!isDragging)
+            // Slight brightness increase when hovering to show it's interactive (only if unlocked)
+            if (!isDragging && !isPositionLocked)
             {
                 this.Opacity = 0.85;
             }
@@ -713,7 +715,7 @@ namespace CpuTempApp
         private void OverlayForm_MouseLeave(object? sender, EventArgs e)
         {
             // Restore original opacity when mouse leaves
-            if (!isDragging)
+            if (!isDragging && !isPositionLocked)
             {
                 this.Opacity = originalOpacity;
             }
