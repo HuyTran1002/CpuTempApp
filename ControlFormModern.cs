@@ -30,7 +30,7 @@ namespace CpuTempApp
         {
             Text = "CPU Temp Monitor - Settings";
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(420, 420);
+            ClientSize = new Size(420, 320);
             FormBorderStyle = FormBorderStyle.None;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -56,7 +56,7 @@ namespace CpuTempApp
             {
                 BackColor = ColorPanel,
                 Dock = DockStyle.Top,
-                Height = 200,
+                Height = 160,
                 Margin = new Padding(15, 10, 15, 10)
             };
             mainPanel.Location = new Point(15, 60);
@@ -65,7 +65,7 @@ namespace CpuTempApp
             chkCpu = new CheckBox
             {
                 Text = "Display CPU Temperature",
-                Location = new Point(20, 20),
+                Location = new Point(20, 15),
                 Size = new Size(300, 24),
                 Font = new Font("Segoe UI", 10, FontStyle.Regular),
                 ForeColor = ColorText,
@@ -78,7 +78,7 @@ namespace CpuTempApp
             chkGpu = new CheckBox
             {
                 Text = "Display GPU Temperature",
-                Location = new Point(20, 60),
+                Location = new Point(20, 45),
                 Size = new Size(300, 24),
                 Font = new Font("Segoe UI", 10, FontStyle.Regular),
                 ForeColor = ColorText,
@@ -91,7 +91,7 @@ namespace CpuTempApp
             var colorLabel = new Label
             {
                 Text = "Text Color:",
-                Location = new Point(20, 105),
+                Location = new Point(20, 80),
                 Size = new Size(80, 24),
                 Font = new Font("Segoe UI", 10, FontStyle.Regular),
                 ForeColor = ColorText,
@@ -102,7 +102,7 @@ namespace CpuTempApp
             btnColorPicker = new Button
             {
                 Text = "Pick Color",
-                Location = new Point(110, 105),
+                Location = new Point(110, 80),
                 Size = new Size(100, 28),
                 Font = new Font("Segoe UI", 9, FontStyle.Bold),
                 BackColor = ColorButton,
@@ -115,7 +115,7 @@ namespace CpuTempApp
             pnlColorPreview = new Panel
             {
                 BackColor = AppSettings.TextColor,
-                Location = new Point(220, 105),
+                Location = new Point(220, 80),
                 Size = new Size(60, 28),
                 BorderStyle = BorderStyle.FixedSingle
             };
@@ -124,7 +124,7 @@ namespace CpuTempApp
             btnEditPosition = new Button
             {
                 Text = "Edit Position",
-                Location = new Point(20, 150),
+                Location = new Point(20, 120),
                 Size = new Size(120, 32),
                 Font = new Font("Segoe UI", 9, FontStyle.Bold),
                 BackColor = ColorButton,
