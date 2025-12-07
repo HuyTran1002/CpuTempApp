@@ -110,8 +110,9 @@ namespace CpuTempApp
                         }
                     }
                     
-                    // Poll every 200ms for very responsive updates (5x per second)
-                    Thread.Sleep(200);
+                    // Poll every 500ms - balance between responsiveness and CPU usage
+                    // Background thread handles fullscreen apps, so 500ms is sufficient
+                    Thread.Sleep(500);
                 }
                 catch { }
             }
@@ -137,27 +138,27 @@ namespace CpuTempApp
                     // CPU: prioritize accuracy and real die temperature
                     if (hardware.HardwareType == HardwareType.Cpu)
                     {
-                        // AMD: Tdie = real die temperature (no offset), highest priority
-                        if (sname.Contains("tdie") || sname.Equals("cpu die (average)"))
+                        // AMD: Tdie (real die temp, no offset) - highest priority for Ryzen
+                        if (sname.Contains("tdie"))
                         {
                             cpuTdie = v;
                         }
-                        // AMD: CCD temperature (chiplet die, very accurate for Ryzen)
+                        // Intel: CPU Package is official TDP sensor - most accurate
+                        // AMD: Package/Tctl also reliable when Tdie not available
+                        else if (sname.Contains("package"))
+                        {
+                            cpuPackage = v;
+                        }
+                        // AMD: Tctl (control temperature, may have offset) - only if Package not found
+                        else if (sname.Contains("tctl") && !cpuPackage.HasValue)
+                        {
+                            cpuPackage = v;
+                        }
+                        // AMD: CCD temperature (chiplet die, accurate for multi-chiplet Ryzen)
                         else if (sname.Contains("ccd") && sname.Contains("temp"))
                         {
                             if (!cpuCCD.HasValue || v > cpuCCD.Value)
                                 cpuCCD = v;
-                        }
-                        // Intel/AMD: Package temperature
-                        else if (sname.Contains("package") || sname.Contains("tctl"))
-                        {
-                            cpuPackage = v;
-                        }
-                        // Fallback: exact "CPU" sensor or "CPU (Tctl/Tdie)"
-                        else if (sname == "cpu" || sname == "cpu (tctl/tdie)" || sname.Contains("cpu package"))
-                        {
-                            if (!cpuPackage.HasValue)
-                                cpuPackage = v;
                         }
                         // Collect individual core temps
                         else if ((sname.Contains("core") || sname.Contains("cpu core")) && !sname.Contains("average"))
@@ -192,25 +193,37 @@ namespace CpuTempApp
                 }
 
                 // CPU: Apply priority logic
+                // Priority order for most accurate temperature:
+                // 1. AMD Tdie (real die temperature, no offset)
+                // 2. Intel/AMD Package (official TDP sensor)
+                // 3. AMD CCD (chiplet die for Ryzen)
+                // 4. Individual cores max (last resort)
                 if (hardware.HardwareType == HardwareType.Cpu && !cpuPreferred)
                 {
                     if (cpuTdie.HasValue)
                     {
+                        // AMD Ryzen: Tdie is most accurate
                         cpuMax = cpuTdie;
                         cpuPreferred = true;
                     }
                     else if (cpuPackage.HasValue)
                     {
+                        // Intel: CPU Package is official TDP sensor (most accurate)
+                        // AMD: Package is reliable when Tdie unavailable
                         cpuMax = cpuPackage;
                         cpuPreferred = true;
                     }
                     else if (cpuCCD.HasValue)
                     {
+                        // AMD Ryzen: CCD temp for multi-chiplet CPUs
                         cpuMax = cpuCCD;
                         cpuPreferred = true;
                     }
                     else if (cpuCoreTemps != null && cpuCoreTemps.Count > 0)
                     {
+                        // Last resort: Use max core temperature
+                        // Intel: Individual cores are accurate
+                        // AMD: Fallback if no die/package temp available
                         cpuMax = cpuCoreTemps.Max();
                         cpuPreferred = true;
                     }

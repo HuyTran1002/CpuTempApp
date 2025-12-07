@@ -47,11 +47,11 @@ namespace CpuTempApp
         private volatile bool settingsChanged = false;
         private float? lastCpu;
         private float? lastGpu;
-        private const int ActiveIntervalMs = 500;   // 500ms polling for responsive updates (2x per second)
+        private const int ActiveIntervalMs = 500;   // 500ms UI update (reads from SensorService cache which polls at 500ms)
         private const int IdleIntervalMs = 5000;   // slower when idle to save CPU
-        private Queue<float> cpuBuffer = new Queue<float>(2); // minimal buffer (2 samples) to reduce lag
-        private Queue<float> gpuBuffer = new Queue<float>(2); // minimal buffer (2 samples) to reduce lag
-        private const float SpikeThreshold = 5.0f; // reject outlier spikes >5°C
+        private Queue<float> cpuBuffer = new Queue<float>(3); // 3-sample buffer for smooth but responsive readings
+        private Queue<float> gpuBuffer = new Queue<float>(3); // 3-sample buffer for smooth but responsive readings
+        private const float SpikeThreshold = 8.0f; // reject outlier spikes >8°C (wider tolerance for thermal variations)
         
         // For dragging the overlay
         private bool isDragging = false;
@@ -297,7 +297,7 @@ namespace CpuTempApp
                         if (cpuMax.HasValue)
                         {
                             cpuBuffer.Enqueue(cpuMax.Value);
-                            if (cpuBuffer.Count > 5) cpuBuffer.Dequeue();                            // Reject obvious spikes
+                            if (cpuBuffer.Count > 3) cpuBuffer.Dequeue();
                             if (lastCpu.HasValue)
                             {
                                 float diff = Math.Abs(cpuMax.Value - lastCpu.Value);
@@ -322,7 +322,7 @@ namespace CpuTempApp
                         if (gpuMax.HasValue)
                         {
                             gpuBuffer.Enqueue(gpuMax.Value);
-                            if (gpuBuffer.Count > 5) gpuBuffer.Dequeue();
+                            if (gpuBuffer.Count > 3) gpuBuffer.Dequeue();
                             
                             // Reject obvious spikes
                             if (lastGpu.HasValue)
