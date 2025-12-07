@@ -44,7 +44,8 @@ namespace CpuTempApp
         private Label cpuLabel;
         private Label gpuLabel;
         private Computer computer;
-        private System.Windows.Forms.Timer pollTimer;
+        private System.Threading.Timer? pollTimer;
+        private System.Threading.Timer? topmostTimer;
         private volatile bool settingsChanged = false;
         private float? lastCpu;
         private float? lastGpu;
@@ -81,11 +82,14 @@ namespace CpuTempApp
             {
                 const int WS_EX_LAYERED = 0x00080000;      // Layered window
                 const int WS_EX_TOPMOST = 0x00000008;      // Always on top
+                const int WS_EX_TRANSPARENT = 0x00000020;  // Click-through (disabled for dragging)
+                const int WS_EX_NOACTIVATE = 0x08000000;   // Don't activate when clicked
+                const int WS_EX_TOOLWINDOW = 0x00000080;   // Tool window (not in alt-tab)
                 const int GWL_EXSTYLE = -20;
                 
-                // Get current style and set LAYERED + TOPMOST (removed TRANSPARENT to allow dragging)
+                // Get current style and set LAYERED + TOPMOST + NOACTIVATE + TOOLWINDOW
                 int currentStyle = GetWindowLong(this.Handle, GWL_EXSTYLE);
-                SetWindowLong(this.Handle, GWL_EXSTYLE, currentStyle | WS_EX_LAYERED | WS_EX_TOPMOST);
+                SetWindowLong(this.Handle, GWL_EXSTYLE, currentStyle | WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
                 
                 // Force to HWND_TOPMOST with no activation
                 SetWindowPos(this.Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
@@ -180,11 +184,11 @@ namespace CpuTempApp
 
             AppSettings.SettingsChanged += OnSettingsChanged;
 
-            // Use Windows Forms Timer for reliable polling
-            pollTimer = new System.Windows.Forms.Timer();
-            pollTimer.Interval = ActiveIntervalMs;
-            pollTimer.Tick += PollTimer_Tick;
-            pollTimer.Start();
+            // Use Threading Timer to avoid suspension during fullscreen
+            pollTimer = new System.Threading.Timer(PollTimerCallback, null, 0, ActiveIntervalMs);
+            
+            // Timer to re-assert topmost status every 500ms (helps with fullscreen apps)
+            topmostTimer = new System.Threading.Timer(ReassertTopmost, null, 500, 500);
         }
 
         // Write CPU/GPU temperature sensors only to a temp file
@@ -306,11 +310,32 @@ namespace CpuTempApp
             catch { }
         }
 
-        private void PollTimer_Tick(object? sender, EventArgs e)
+        private void ReassertTopmost(object? state)
         {
+            if (this.IsDisposed || !this.IsHandleCreated)
+                return;
+
             try
             {
-                if (settingsChanged)
+                // Re-enforce topmost position
+                SetWindowPos(this.Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            }
+            catch { }
+        }
+
+        private void PollTimerCallback(object? state)
+        {
+            // Run on UI thread using BeginInvoke
+            if (this.IsDisposed || !this.IsHandleCreated)
+                return;
+
+            try
+            {
+                this.BeginInvoke((Action)(() =>
+                {
+                    try
+                    {
+                        if (settingsChanged)
                 {
                     settingsChanged = false;
                     try { computer?.Close(); } catch { }
@@ -473,6 +498,9 @@ namespace CpuTempApp
                     }
                     catch { }
                 }
+                    }
+                    catch { }
+                }));
             }
             catch { }
         }
@@ -530,6 +558,10 @@ namespace CpuTempApp
             try
             {
                 List<float>? cpuCoreTemps = null;
+                float? cpuPackage = null;
+                float? cpuTdie = null;
+                float? cpuCCD = null;
+                
                 foreach (var sensor in hardware.Sensors)
                 {
                     if (!sensor.Value.HasValue) continue;
@@ -537,26 +569,35 @@ namespace CpuTempApp
                     var v = sensor.Value.GetValueOrDefault();
                     var sname = (sensor.Name ?? string.Empty).ToLowerInvariant();
 
-                    // CPU: use CPU Package (Tctl/Tccd) - most important sensor for CPU lifespan
+                    // CPU: prioritize accuracy and real die temperature
                     if (hardware.HardwareType == HardwareType.Cpu)
                     {
-                        // Highest priority: CPU Package sensor (raw, no offset)
-                        if (sname.Contains("package"))
+                        // AMD: Tdie = real die temperature (no offset), highest priority
+                        if (sname.Contains("tdie") || sname.Equals("cpu die (average)"))
                         {
-                            if (!cpuMax.HasValue || v > cpuMax.Value)
-                            {
-                                cpuMax = v;
-                                cpuPreferred = true;
-                            }
+                            cpuTdie = v;
                         }
-                        // Fallback: exact "CPU" sensor
-                        else if (!cpuPreferred && (sname == "cpu" || sname.Equals("cpu")))
+                        // AMD: CCD temperature (chiplet die, very accurate for Ryzen)
+                        else if (sname.Contains("ccd") && sname.Contains("temp"))
                         {
-                            cpuMax = v;
-                            cpuPreferred = true;
+                            if (!cpuCCD.HasValue || v > cpuCCD.Value)
+                                cpuCCD = v;
                         }
-                        // Final fallback: core average only if no Package sensor
-                        else if (!cpuPreferred && sname.Contains("core"))
+                        // Intel/AMD: Package temperature
+                        // Intel: "CPU Package" is the most accurate single sensor
+                        // AMD: "Tctl" may have offset, but still good fallback
+                        else if (sname.Contains("package") || sname.Contains("tctl"))
+                        {
+                            cpuPackage = v;
+                        }
+                        // Fallback: exact "CPU" sensor or "CPU (Tctl/Tdie)"
+                        else if (sname == "cpu" || sname == "cpu (tctl/tdie)" || sname.Contains("cpu package"))
+                        {
+                            if (!cpuPackage.HasValue) // Don't override if already have package
+                                cpuPackage = v;
+                        }
+                        // Collect individual core temps for max/average calculation
+                        else if ((sname.Contains("core") || sname.Contains("cpu core")) && !sname.Contains("average"))
                         {
                             cpuCoreTemps ??= new List<float>();
                             cpuCoreTemps.Add(v);
@@ -589,10 +630,37 @@ namespace CpuTempApp
                     TraverseHardware(sub, ref cpuMax, ref gpuMax, ref cpuPreferred, ref gpuPreferred);
                 }
 
-                // CPU fallback: average all core temps if no Package sensor
-                if (hardware.HardwareType == HardwareType.Cpu && cpuCoreTemps != null && cpuCoreTemps.Count > 0 && !cpuPreferred)
+                // CPU: Apply priority logic AFTER collecting all sensors
+                if (hardware.HardwareType == HardwareType.Cpu && !cpuPreferred)
                 {
-                    cpuMax = cpuCoreTemps.Average();
+                    // Priority 1: Tdie (real die temp, no offset - AMD only)
+                    if (cpuTdie.HasValue)
+                    {
+                        cpuMax = cpuTdie;
+                        cpuPreferred = true;
+                    }
+                    // Priority 2: Package temperature (best for Intel, good for AMD)
+                    // Intel CPUs: CPU Package is the official TDP sensor
+                    // AMD CPUs: Tctl (may have offset, but Package is still accurate enough)
+                    else if (cpuPackage.HasValue)
+                    {
+                        cpuMax = cpuPackage;
+                        cpuPreferred = true;
+                    }
+                    // Priority 3: CCD max (chiplet die - AMD Ryzen specific)
+                    else if (cpuCCD.HasValue)
+                    {
+                        cpuMax = cpuCCD;
+                        cpuPreferred = true;
+                    }
+                    // Priority 4: Maximum core temperature (hottest core)
+                    // Intel: Core temps are very accurate and reliable
+                    // AMD: Core temps can be used as last resort
+                    else if (cpuCoreTemps != null && cpuCoreTemps.Count > 0)
+                    {
+                        cpuMax = cpuCoreTemps.Max(); // Use MAX to detect thermal throttling
+                        cpuPreferred = true;
+                    }
                 }
             }
             catch { }
@@ -673,8 +741,10 @@ namespace CpuTempApp
             // Clean up: stop timer, close computer
             try
             {
-                pollTimer?.Stop();
+                pollTimer?.Change(Timeout.Infinite, Timeout.Infinite);
                 pollTimer?.Dispose();
+                topmostTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+                topmostTimer?.Dispose();
             }
             catch { }
 
