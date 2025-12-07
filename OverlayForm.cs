@@ -388,7 +388,7 @@ namespace CpuTempApp
                             gpuLabel.Visible = false;
                         }
                         
-                        // Calculate widths and spacing
+                        // Calculate widths
                         int cpuLabelWidth = AppSettings.ShowCpu ? cpuLabel.Width : 0;
                         int gpuLabelWidth = AppSettings.ShowGpu ? gpuLabel.Width : 0;
                         const int spacing = 10; // space between CPU and GPU
@@ -398,23 +398,23 @@ namespace CpuTempApp
                             totalWidth += spacing;
                         totalWidth += gpuLabelWidth;
                         
-                        // Form width with padding
-                        this.Width = Math.Max(totalWidth + 20, 180); // 10px padding each side
+                        // Form width - make it wide enough with symmetric padding
+                        this.Width = Math.Max(totalWidth + 30, 200); // 15px padding each side for symmetry
                         
-                        // Center the entire group (CPU [space] GPU) in the middle of the form
-                        int startX = (this.Width - totalWidth) / 2;
+                        // Position CPU at left with padding, GPU at right with padding (symmetric)
+                        int leftPadding = 15;
+                        int rightPadding = 15;
                         
                         if (AppSettings.ShowCpu)
                         {
-                            cpuLabel.Location = new Point(startX, 0);
+                            cpuLabel.Location = new Point(leftPadding, 0);
                         }
                         
                         if (AppSettings.ShowGpu)
                         {
-                            int gpuX = startX + cpuLabelWidth;
-                            if (AppSettings.ShowCpu)
-                                gpuX += spacing;
-                            gpuLabel.Location = new Point(gpuX, 0);
+                            // GPU positioned from right: form.Width - rightPadding - gpuLabel.Width
+                            int gpuX = this.Width - rightPadding - gpuLabelWidth;
+                            gpuLabel.Location = new Point(Math.Max(gpuX, leftPadding + cpuLabelWidth + spacing), 0);
                         }
                     }
                     catch { }
