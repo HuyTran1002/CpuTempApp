@@ -368,7 +368,7 @@ namespace CpuTempApp
                         
                         if (AppSettings.ShowCpu)
                         {
-                            cpuLabel.Text = displayCpu.HasValue ? $"CPU: {displayCpu.Value:F1}°C" : "CPU: N/A";
+                            cpuLabel.Text = displayCpu.HasValue ? $"CPU: {displayCpu.Value,5:F1}°C" : "CPU: N/A";
                             cpuLabel.Visible = true;
                         }
                         else
@@ -379,7 +379,7 @@ namespace CpuTempApp
 
                         if (AppSettings.ShowGpu)
                         {
-                            gpuLabel.Text = displayGpu.HasValue ? $"GPU: {displayGpu.Value:F1}°C" : "GPU: N/A";
+                            gpuLabel.Text = displayGpu.HasValue ? $"GPU: {displayGpu.Value,5:F1}°C" : "GPU: N/A";
                             gpuLabel.Visible = true;
                         }
                         else
@@ -388,28 +388,34 @@ namespace CpuTempApp
                             gpuLabel.Visible = false;
                         }
                         
-                        // Dynamically position GPU label based on CPU label width + spacing
+                        // Calculate widths and spacing
+                        int cpuLabelWidth = AppSettings.ShowCpu ? cpuLabel.Width : 0;
+                        int gpuLabelWidth = AppSettings.ShowGpu ? gpuLabel.Width : 0;
+                        const int spacing = 10; // space between CPU and GPU
+                        
+                        int totalWidth = cpuLabelWidth;
                         if (AppSettings.ShowCpu && AppSettings.ShowGpu)
+                            totalWidth += spacing;
+                        totalWidth += gpuLabelWidth;
+                        
+                        // Form width with padding
+                        this.Width = Math.Max(totalWidth + 20, 180); // 10px padding each side
+                        
+                        // Center the entire group (CPU [space] GPU) in the middle of the form
+                        int startX = (this.Width - totalWidth) / 2;
+                        
+                        if (AppSettings.ShowCpu)
                         {
-                            gpuLabel.Location = new Point(cpuWidth > 0 ? cpuWidth + 10 : cpuLabel.Width + 10, 0);
-                        }
-                        else if (AppSettings.ShowGpu)
-                        {
-                            gpuLabel.Location = new Point(0, 0);
+                            cpuLabel.Location = new Point(startX, 0);
                         }
                         
-                        // Update form width to fit both labels
-                        int formWidth = 10; // padding
-                        if (AppSettings.ShowCpu)
-                            formWidth += cpuLabel.Width;
                         if (AppSettings.ShowGpu)
                         {
+                            int gpuX = startX + cpuLabelWidth;
                             if (AppSettings.ShowCpu)
-                                formWidth += 10 + gpuLabel.Width; // spacing + GPU width
-                            else
-                                formWidth += gpuLabel.Width;
+                                gpuX += spacing;
+                            gpuLabel.Location = new Point(gpuX, 0);
                         }
-                        this.Width = Math.Max(formWidth, 150);
                     }
                     catch { }
                 }
