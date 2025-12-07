@@ -12,7 +12,7 @@ namespace CpuTempApp
             ApplicationConfiguration.Initialize();
 
             // show welcome and options if you want (same as before)
-            using (var welcome = new WelcomeForm())
+            using (var welcome = new WelcomeFormModern())
             {
                 if (welcome.ShowDialog() != DialogResult.OK) return;
             }
@@ -47,7 +47,7 @@ namespace CpuTempApp
             try
             {
                 // run ControlForm as main window; it will create the overlay and tray
-                Application.Run(new ControlForm());
+                Application.Run(new ControlFormModern());
             }
             finally
             {
