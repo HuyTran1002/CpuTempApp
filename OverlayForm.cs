@@ -475,7 +475,7 @@ namespace CpuTempApp
         {
             if (!a.HasValue && !b.HasValue) return true;
             if (a.HasValue != b.HasValue) return false;
-            return Math.Abs(a.Value - b.Value) < 0.5f; // faster response like AIDA64
+            return Math.Abs(a.Value - b.Value) < 0.1f; // faster response like AIDA64
         }
 
         
