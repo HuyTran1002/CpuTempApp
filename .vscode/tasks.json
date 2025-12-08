@@ -1,0 +1,17 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "build",
+                "${workspaceFolder}/CpuTempApp.csproj",
+                "/property:GenerateFullPaths=true",
+                "/tsc:${workspaceFolder}/bin/Debug/net7.0-windows"
+            ],
+            "problemMatcher": "$msCompile"
+        }
+    ]
+}

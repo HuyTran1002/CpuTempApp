@@ -18,6 +18,7 @@ namespace CpuTempApp
         private ContextMenuStrip trayMenu;
         private OverlayForm overlay;
         private bool allowClose = false;
+        private bool hasUnlockedPosition = false;  // Track if position has been unlocked
 
         private readonly Color ColorBackground = Color.FromArgb(10, 10, 20);
         private readonly Color ColorPanel = Color.FromArgb(20, 20, 35);
@@ -30,7 +31,7 @@ namespace CpuTempApp
         {
             Text = "CPU Temp Monitor - Settings";
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(400, 300);
+            ClientSize = new Size(400, 280);
             FormBorderStyle = FormBorderStyle.None;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -52,7 +53,13 @@ namespace CpuTempApp
             btnClose.FlatAppearance.BorderSize = 0;
             btnClose.Click += (s, e) => 
             { 
-                var result = MessageBox.Show("Are you sure you want to exit?", "Confirm Exit", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (hasUnlockedPosition)
+                {
+                    MessageBox.Show(this, "Please lock the position first before closing the app.", "Position Not Locked", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                
+                var result = MessageBox.Show(this, "Are you sure you want to exit?", "Confirm Exit", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                 if (result == DialogResult.Yes)
                 {
                     allowClose = true;
@@ -61,12 +68,49 @@ namespace CpuTempApp
             };
             Controls.Add(btnClose);
 
+            // Reset Position Button (small, next to X)
+            var btnReset = new Button
+            {
+                Text = "⟲",
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                ForeColor = ColorAccent,
+                BackColor = ColorBackground,
+                FlatStyle = FlatStyle.Flat,
+                Size = new Size(35, 35),
+                Location = new Point(ClientSize.Width - 70, 3),
+                Cursor = Cursors.Hand
+            };
+            btnReset.FlatAppearance.BorderSize = 0;
+            btnReset.Click += (s, e) =>
+            {
+                AppSettings.ResetOverlayPosition();
+                if (overlay != null)
+                {
+                    var screen = Screen.PrimaryScreen.Bounds;
+                    overlay.Location = new Point((screen.Width - overlay.Width) / 2, 0);
+                }
+                MessageBox.Show("Overlay position reset to center.", "Reset", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            };
+            Controls.Add(btnReset);
+
+            // Developer Signature
+            var devLabel = new Label
+            {
+                Text = "Made by Dev Huy",
+                Font = new Font("Segoe UI", 8, FontStyle.Italic),
+                ForeColor = Color.FromArgb(100, 255, 200),
+                BackColor = ColorBackground,
+                AutoSize = true,
+                Location = new Point(15, 15)
+            };
+            Controls.Add(devLabel);
+
             // Main Settings Panel - Centered & Compact
             var mainPanel = new Panel
             {
                 BackColor = ColorPanel,
                 Location = new Point(15, 45),
-                Size = new Size(370, 170),
+                Size = new Size(370, 130),
                 Padding = new Padding(18, 15, 18, 15)
             };
 
@@ -133,8 +177,8 @@ namespace CpuTempApp
             btnEditPosition = new Button
             {
                 Text = "Edit Position",
-                Location = new Point(250, 72),
-                Size = new Size(98, 28),
+                Location = new Point(240, 72),
+                Size = new Size(108, 28),
                 Font = new Font("Segoe UI", 9, FontStyle.Bold),
                 BackColor = ColorButton,
                 ForeColor = Color.White,
@@ -155,7 +199,7 @@ namespace CpuTempApp
             var buttonPanel = new Panel
             {
                 BackColor = ColorBackground,
-                Location = new Point(0, 220),
+                Location = new Point(0, 190),
                 Size = new Size(ClientSize.Width, 80),
                 Padding = new Padding(0, 12, 0, 12)
             };
@@ -234,8 +278,10 @@ namespace CpuTempApp
 
             btnApply.Click += (s, e) =>
             {
+                System.Diagnostics.Debug.WriteLine($"[ControlForm] APPLY clicked: ShowCpu={chkCpu.Checked}, ShowGpu={chkGpu.Checked}");
                 AppSettings.ShowCpu = chkCpu.Checked;
                 AppSettings.ShowGpu = chkGpu.Checked;
+                System.Diagnostics.Debug.WriteLine($"[ControlForm] After APPLY: AppSettings.ShowCpu={AppSettings.ShowCpu}, AppSettings.ShowGpu={AppSettings.ShowGpu}");
                 if (this.Modal) Close();
             };
 
@@ -245,16 +291,28 @@ namespace CpuTempApp
                 if (overlay != null)
                 {
                     overlay.isPositionLocked = !overlay.isPositionLocked;
+                    System.Diagnostics.Debug.WriteLine($"[ControlForm] Toggle position lock: isPositionLocked={overlay.isPositionLocked}");
                     if (overlay.isPositionLocked)
                     {
+                        // LOCKING - position is now locked
                         btnEditPosition.Text = "Edit Position";
-                        MessageBox.Show("Position locked. Click 'Edit Position' again to unlock for dragging.", "Position Locked", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        btnEditPosition.BackColor = Color.FromArgb(0, 150, 255);
+                        // Save the new position when locking
+                        System.Diagnostics.Debug.WriteLine($"[ControlForm] LOCKING position: X={overlay.Location.X}, Y={overlay.Location.Y}");
+                        AppSettings.OverlayX = overlay.Location.X;
+                        AppSettings.OverlayY = overlay.Location.Y;
+                        System.Diagnostics.Debug.WriteLine($"[ControlForm] Position saved to AppSettings");
+                        hasUnlockedPosition = false;  // Reset flag after locking
+                        MessageBox.Show("Position locked and saved. Click 'Edit Position' again to unlock for dragging.", "Position Locked", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                     else
                     {
-                        btnEditPosition.Text = "✓ Locked";
-                        btnEditPosition.BackColor = Color.FromArgb(50, 150, 50);
-                        MessageBox.Show("Position unlocked. Drag the overlay to reposition.", "Position Unlocked", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        // UNLOCKING - position is now unlocked for dragging
+                        System.Diagnostics.Debug.WriteLine($"[ControlForm] UNLOCKING position");
+                        btnEditPosition.Text = "✓ Unlocked";
+                        btnEditPosition.BackColor = Color.FromArgb(200, 100, 50);
+                        hasUnlockedPosition = true;  // Mark that position is unlocked
+                        MessageBox.Show("Position unlocked. Drag the overlay to reposition, then lock again to save.", "Position Unlocked", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                 }
             };
@@ -268,10 +326,14 @@ namespace CpuTempApp
                     this.Hide();
                 }
             };
-
             // Hide instead of exit on X button
             btnCancel.Click += (s, e) =>
             {
+                if (hasUnlockedPosition)
+                {
+                    MessageBox.Show("Please lock the position first before hiding the app.", "Position Not Locked", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
                 this.Hide();
             };
         }
@@ -319,6 +381,14 @@ namespace CpuTempApp
 
         private void ControlForm_FormClosing(object sender, FormClosingEventArgs e)
         {
+            // Check if position is unlocked when trying to close via X button or File menu
+            if (hasUnlockedPosition && e.CloseReason == CloseReason.UserClosing && !allowClose)
+            {
+                MessageBox.Show("Please lock the position first before closing the app.", "Position Not Locked", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                e.Cancel = true;
+                return;
+            }
+            
             if (!allowClose && e.CloseReason == CloseReason.UserClosing)
             {
                 e.Cancel = true;

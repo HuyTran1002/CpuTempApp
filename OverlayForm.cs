@@ -47,11 +47,14 @@ namespace CpuTempApp
         private volatile bool settingsChanged = false;
         private float? lastCpu;
         private float? lastGpu;
+        private bool gpuJustEnabled = false;  // Track if GPU was just enabled
+        private bool cpuJustEnabled = false;  // Track if CPU was just enabled
         private const int ActiveIntervalMs = 500;   // 500ms UI update (reads from SensorService cache which polls at 500ms)
         private const int IdleIntervalMs = 5000;   // slower when idle to save CPU
         private Queue<float> cpuBuffer = new Queue<float>(3); // 3-sample buffer for smooth but responsive readings
         private Queue<float> gpuBuffer = new Queue<float>(3); // 3-sample buffer for smooth but responsive readings
         private const float SpikeThreshold = 8.0f; // reject outlier spikes >8°C (wider tolerance for thermal variations)
+        private bool isPositionDragged = false;  // Track if position has been manually dragged
         
         // For dragging the overlay
         private bool isDragging = false;
@@ -70,7 +73,7 @@ namespace CpuTempApp
             BackColor = Color.Black;  // Use black as transparency key instead
             TransparencyKey = Color.Black;
             Width = 160;
-            Height = 30;
+            Height = 40;  // Increased from 30 to 40 for more breathing room
             Padding = new Padding(0);
             
             // Make overlay appear above fullscreen games using unmanaged window style
@@ -95,9 +98,24 @@ namespace CpuTempApp
             }
             catch { }
             
-            // Position at top center of screen, flush with top edge
+            // Reload position from Registry before positioning
+            AppSettings.ReloadFromRegistry();
+            System.Diagnostics.Debug.WriteLine($"[OverlayForm] After reload: OverlayX={AppSettings.OverlayX}, OverlayY={AppSettings.OverlayY}");
+            
+            // Position at saved location or center if default
             var screen = Screen.PrimaryScreen.Bounds;
-            Location = new Point((screen.Width - Width) / 2, 0);
+            if (AppSettings.OverlayX == -1)
+            {
+                // Default center position
+                System.Diagnostics.Debug.WriteLine($"[OverlayForm] Positioning to CENTER");
+                Location = new Point((screen.Width - Width) / 2, AppSettings.OverlayY);
+            }
+            else
+            {
+                // Restore saved position
+                System.Diagnostics.Debug.WriteLine($"[OverlayForm] Positioning to SAVED: X={AppSettings.OverlayX}, Y={AppSettings.OverlayY}");
+                Location = new Point(AppSettings.OverlayX, AppSettings.OverlayY);
+            }
 
             // Labels with black background to match transparency key - horizontal layout
             cpuLabel = new Label 
@@ -173,9 +191,12 @@ namespace CpuTempApp
                 
             this.Width = totalWidth;
             
-            // Re-center after width adjustment
-            var screenBounds = Screen.PrimaryScreen.Bounds;
-            Location = new Point((screenBounds.Width - this.Width) / 2, 0);
+            // Only re-center if using default position
+            if (AppSettings.OverlayX == -1)
+            {
+                var screenBounds = Screen.PrimaryScreen.Bounds;
+                Location = new Point((screenBounds.Width - this.Width) / 2, 0);
+            }
 
             AppSettings.SettingsChanged += OnSettingsChanged;
             // Use Threading Timer to avoid suspension during fullscreen
@@ -190,6 +211,12 @@ namespace CpuTempApp
         {
             // Update SensorService with new settings
             SensorService.UpdateConfig(AppSettings.ShowCpu, AppSettings.ShowGpu);
+            
+            // Track if GPU/CPU just got enabled
+            if (AppSettings.ShowGpu && string.IsNullOrEmpty(gpuLabel.Text))
+                gpuJustEnabled = true;
+            if (AppSettings.ShowCpu && string.IsNullOrEmpty(cpuLabel.Text))
+                cpuJustEnabled = true;
             
             // Update label colors and visibility when settings change
             try
@@ -219,9 +246,10 @@ namespace CpuTempApp
                 }
                 
                 // Position GPU label immediately
+                const int spacing = 5;  // 5px spacing between CPU and GPU
                 if (AppSettings.ShowCpu && AppSettings.ShowGpu)
                 {
-                    gpuLabel.Location = new Point(cpuLabel.Width + 10, 0);
+                    gpuLabel.Location = new Point(cpuLabel.Right + spacing, 0);
                 }
                 else if (AppSettings.ShowGpu)
                 {
@@ -229,13 +257,14 @@ namespace CpuTempApp
                 }
                 
                 // Update form width
-                int formWidth = 10;
+                const int padding = 10;
+                int formWidth = padding;
                 if (AppSettings.ShowCpu)
                     formWidth += cpuLabel.Width;
                 if (AppSettings.ShowGpu)
                 {
                     if (AppSettings.ShowCpu)
-                        formWidth += 10 + gpuLabel.Width;
+                        formWidth += spacing + gpuLabel.Width;
                     else
                         formWidth += gpuLabel.Width;
                 }
@@ -351,71 +380,87 @@ namespace CpuTempApp
 
                         if (cpuChanged || gpuChanged)
                         {
-                            lastCpu = displayCpu; lastGpu = displayGpu;
                     try
                     {
-                        // Calculate position BEFORE setting text
-                        int cpuWidth = 0;
-                        if (AppSettings.ShowCpu && displayCpu.HasValue)
-                        {
-                            string cpuText = $"CPU: {displayCpu.Value:F1}°C";
-                            using (Graphics g = this.CreateGraphics())
-                            {
-                                SizeF size = g.MeasureString(cpuText, cpuLabel.Font);
-                                cpuWidth = (int)Math.Ceiling(size.Width);
-                            }
-                        }
-                        
                         if (AppSettings.ShowCpu)
                         {
-                            cpuLabel.Text = displayCpu.HasValue ? $"CPU: {displayCpu.Value,5:F1}°C" : "CPU: N/A";
+                            if (displayCpu.HasValue)
+                            {
+                                cpuLabel.Text = $"CPU: {displayCpu.Value,5:F1}°C";
+                                cpuJustEnabled = false;
+                            }
+                            else if (cpuJustEnabled)
+                            {
+                                cpuLabel.Text = "CPU: --°C";
+                            }
+                            else
+                            {
+                                cpuLabel.Text = "CPU: N/A";
+                            }
                             cpuLabel.Visible = true;
                         }
                         else
                         {
-                            cpuLabel.Text = "";
                             cpuLabel.Visible = false;
                         }
 
                         if (AppSettings.ShowGpu)
                         {
-                            gpuLabel.Text = displayGpu.HasValue ? $"GPU: {displayGpu.Value,5:F1}°C" : "GPU: N/A";
+                            if (displayGpu.HasValue)
+                            {
+                                gpuLabel.Text = $"GPU: {displayGpu.Value,5:F1}°C";
+                                gpuJustEnabled = false;
+                            }
+                            else if (gpuJustEnabled)
+                            {
+                                gpuLabel.Text = "GPU: --°C";
+                            }
+                            else
+                            {
+                                gpuLabel.Text = "GPU: N/A";
+                            }
                             gpuLabel.Visible = true;
                         }
                         else
                         {
-                            gpuLabel.Text = "";
                             gpuLabel.Visible = false;
                         }
                         
-                        // Calculate widths
-                        int cpuLabelWidth = AppSettings.ShowCpu ? cpuLabel.Width : 0;
-                        int gpuLabelWidth = AppSettings.ShowGpu ? gpuLabel.Width : 0;
-                        const int spacing = 10; // space between CPU and GPU
-                        
-                        int totalWidth = cpuLabelWidth;
+                        // Update GPU position after CPU width changes
+                        const int spacing = 5;  // 5px spacing between CPU and GPU
                         if (AppSettings.ShowCpu && AppSettings.ShowGpu)
-                            totalWidth += spacing;
-                        totalWidth += gpuLabelWidth;
-                        
-                        // Form width - make it wide enough with symmetric padding
-                        this.Width = Math.Max(totalWidth + 30, 200); // 15px padding each side for symmetry
-                        
-                        // Position CPU at left with padding, GPU at right with padding (symmetric)
-                        int leftPadding = 15;
-                        int rightPadding = 15;
-                        
-                        if (AppSettings.ShowCpu)
                         {
-                            cpuLabel.Location = new Point(leftPadding, 0);
+                            gpuLabel.Location = new Point(cpuLabel.Right + spacing, 0);
+                        }
+                        else if (AppSettings.ShowGpu)
+                        {
+                            gpuLabel.Location = new Point(0, 0);
                         }
                         
+                        // Update form width to fit content
+                        const int padding = 10;
+                        int formWidth = padding;
+                        if (AppSettings.ShowCpu)
+                            formWidth += cpuLabel.Width;
                         if (AppSettings.ShowGpu)
                         {
-                            // GPU positioned from right: form.Width - rightPadding - gpuLabel.Width
-                            int gpuX = this.Width - rightPadding - gpuLabelWidth;
-                            gpuLabel.Location = new Point(Math.Max(gpuX, leftPadding + cpuLabelWidth + spacing), 0);
+                            if (AppSettings.ShowCpu)
+                                formWidth += spacing + gpuLabel.Width;
+                            else
+                                formWidth += gpuLabel.Width;
                         }
+                        this.Width = Math.Max(formWidth, 150);
+                        
+                        // Re-center if using default position (after width change)
+                        if (AppSettings.OverlayX == -1)
+                        {
+                            var screen = Screen.PrimaryScreen.Bounds;
+                            this.Location = new Point((screen.Width - this.Width) / 2, 0);
+                        }
+                        
+                        // Update last values
+                        lastCpu = displayCpu;
+                        lastGpu = displayGpu;
                     }
                     catch { }
                 }
@@ -465,6 +510,13 @@ namespace CpuTempApp
             if (e.Button == MouseButtons.Left)
             {
                 isDragging = false;
+                isPositionDragged = true;  // Mark that position has been manually dragged
+                // Update in-memory position immediately to prevent re-centering (don't save to Registry yet)
+                if (!isPositionLocked)
+                {
+                    AppSettings.SetOverlayPositionTemp(this.Location.X, this.Location.Y);
+                    System.Diagnostics.Debug.WriteLine($"[OverlayForm] Drag complete: X={this.Location.X}, Y={this.Location.Y} (temp, not saved)");
+                }
                 // Restore original opacity when drag ends
                 this.Opacity = originalOpacity;
             }

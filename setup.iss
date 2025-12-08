@@ -1,6 +1,6 @@
 [Setup]
 AppName=CPU Temp Monitor
-AppVersion=1.0.4
+AppVersion=1.0.5
 AppPublisher=CPU Temp
 AppPublisherURL=https://github.com
 AppSupportURL=https://github.com
