@@ -102,20 +102,8 @@ namespace CpuTempApp
             AppSettings.ReloadFromRegistry();
             System.Diagnostics.Debug.WriteLine($"[OverlayForm] After reload: OverlayX={AppSettings.OverlayX}, OverlayY={AppSettings.OverlayY}");
             
-            // Position at saved location or center if default
-            var screen = Screen.PrimaryScreen.Bounds;
-            if (AppSettings.OverlayX == -1)
-            {
-                // Default center position
-                System.Diagnostics.Debug.WriteLine($"[OverlayForm] Positioning to CENTER");
-                Location = new Point((screen.Width - Width) / 2, AppSettings.OverlayY);
-            }
-            else
-            {
-                // Restore saved position
-                System.Diagnostics.Debug.WriteLine($"[OverlayForm] Positioning to SAVED: X={AppSettings.OverlayX}, Y={AppSettings.OverlayY}");
-                Location = new Point(AppSettings.OverlayX, AppSettings.OverlayY);
-            }
+            // Temporary position - will be set properly after width is calculated
+            Location = new Point(0, 0);
 
             // Labels with black background to match transparency key - horizontal layout
             cpuLabel = new Label 
@@ -174,28 +162,50 @@ namespace CpuTempApp
             // GPU label position will be dynamically adjusted based on CPU label width
             
             // Adjust form width to fit content exactly
-            int totalWidth = 0;
+            const int spacing = 4;  // 4px spacing between CPU and GPU
+            const int padding = 10; // padding on each side
+            int totalWidth = padding;
             if (AppSettings.ShowCpu)
                 totalWidth += cpuLabel.PreferredWidth;
             if (AppSettings.ShowGpu)
             {
                 if (AppSettings.ShowCpu)
-                    totalWidth = Math.Max(totalWidth + 70, 70 + gpuLabel.PreferredWidth);
+                    totalWidth += spacing + gpuLabel.PreferredWidth;
                 else
-                    totalWidth = gpuLabel.PreferredWidth;
+                    totalWidth += gpuLabel.PreferredWidth;
             }
+            totalWidth += padding;
             
             // Ensure minimum width
-            if (totalWidth < 80)
+            if (totalWidth < 150)
                 totalWidth = 150;
                 
             this.Width = totalWidth;
             
-            // Only re-center if using default position
+            // Position labels with padding
+            cpuLabel.Location = new Point(padding, 0);
+            if (AppSettings.ShowCpu && AppSettings.ShowGpu)
+            {
+                gpuLabel.Location = new Point(padding + cpuLabel.Width + spacing, 0);
+            }
+            else if (AppSettings.ShowGpu)
+            {
+                gpuLabel.Location = new Point(padding, 0);
+            }
+            
+            // Position overlay at correct location after width is calculated
+            var screen = Screen.PrimaryScreen.Bounds;
             if (AppSettings.OverlayX == -1)
             {
-                var screenBounds = Screen.PrimaryScreen.Bounds;
-                Location = new Point((screenBounds.Width - this.Width) / 2, 0);
+                // Default center position: calculate center based on actual width
+                System.Diagnostics.Debug.WriteLine($"[OverlayForm] Positioning to CENTER with width {totalWidth}");
+                Location = new Point((screen.Width - this.Width) / 2, AppSettings.OverlayY);
+            }
+            else
+            {
+                // Restore saved position
+                System.Diagnostics.Debug.WriteLine($"[OverlayForm] Positioning to SAVED: X={AppSettings.OverlayX}, Y={AppSettings.OverlayY}");
+                Location = new Point(AppSettings.OverlayX, AppSettings.OverlayY);
             }
 
             AppSettings.SettingsChanged += OnSettingsChanged;
@@ -246,18 +256,19 @@ namespace CpuTempApp
                 }
                 
                 // Position GPU label immediately
-                const int spacing = 5;  // 5px spacing between CPU and GPU
+                const int spacing = 4;  // 4px spacing between CPU and GPU
+                const int padding = 10;
+                cpuLabel.Location = new Point(padding, 0);
                 if (AppSettings.ShowCpu && AppSettings.ShowGpu)
                 {
-                    gpuLabel.Location = new Point(cpuLabel.Right + spacing, 0);
+                    gpuLabel.Location = new Point(padding + cpuLabel.Width + spacing, 0);
                 }
                 else if (AppSettings.ShowGpu)
                 {
-                    gpuLabel.Location = new Point(0, 0);
+                    gpuLabel.Location = new Point(padding, 0);
                 }
                 
                 // Update form width
-                const int padding = 10;
                 int formWidth = padding;
                 if (AppSettings.ShowCpu)
                     formWidth += cpuLabel.Width;
@@ -268,6 +279,7 @@ namespace CpuTempApp
                     else
                         formWidth += gpuLabel.Width;
                 }
+                formWidth += padding;
                 this.Width = Math.Max(formWidth, 150);
             }
             catch { }
@@ -427,18 +439,19 @@ namespace CpuTempApp
                         }
                         
                         // Update GPU position after CPU width changes
-                        const int spacing = 5;  // 5px spacing between CPU and GPU
+                        const int spacing = 4;  // 4px spacing between CPU and GPU
+                        const int padding = 10;
+                        cpuLabel.Location = new Point(padding, 0);
                         if (AppSettings.ShowCpu && AppSettings.ShowGpu)
                         {
-                            gpuLabel.Location = new Point(cpuLabel.Right + spacing, 0);
+                            gpuLabel.Location = new Point(padding + cpuLabel.Width + spacing, 0);
                         }
                         else if (AppSettings.ShowGpu)
                         {
-                            gpuLabel.Location = new Point(0, 0);
+                            gpuLabel.Location = new Point(padding, 0);
                         }
                         
                         // Update form width to fit content
-                        const int padding = 10;
                         int formWidth = padding;
                         if (AppSettings.ShowCpu)
                             formWidth += cpuLabel.Width;
@@ -449,13 +462,14 @@ namespace CpuTempApp
                             else
                                 formWidth += gpuLabel.Width;
                         }
+                        formWidth += padding;
                         this.Width = Math.Max(formWidth, 150);
                         
                         // Re-center if using default position (after width change)
                         if (AppSettings.OverlayX == -1)
                         {
                             var screen = Screen.PrimaryScreen.Bounds;
-                            this.Location = new Point((screen.Width - this.Width) / 2, 0);
+                            this.Location = new Point((screen.Width - this.Width) / 2, AppSettings.OverlayY);
                         }
                         
                         // Update last values
