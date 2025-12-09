@@ -24,6 +24,8 @@ namespace CpuTempApp
             // Check for updates immediately after startup (async, non-blocking)
             Task.Run(async () =>
             {
+                // Wait 500ms for UI to fully load
+                await Task.Delay(500);
                 try
                 {
                     var (hasUpdate, latestVersion) = await UpdateChecker.CheckForUpdateAsync();
