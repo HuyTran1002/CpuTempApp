@@ -61,6 +61,14 @@ namespace CpuTempApp
         private Point dragStartPoint;
         private double originalOpacity = 1.0; // Track original opacity
         public bool isPositionLocked = true;  // Position locked by default (prevent accidental drag)
+        
+        // Animation system
+        private System.Threading.Timer? animationTimer;
+        private float animationProgress = 0f; // 0 to 1
+        private bool isAnimating = false;
+        private DateTime lastUpdateTime = DateTime.Now;
+        private Color baseTextColor = Color.Cyan; // Futuristic cyan
+        private const int AnimationDurationMs = 300; // Smooth 300ms animations
 
         // Overlay no longer creates a tray icon; ControlForm owns the tray icon.
 
@@ -209,6 +217,10 @@ namespace CpuTempApp
             }
 
             AppSettings.SettingsChanged += OnSettingsChanged;
+            
+            // Start animation timer for smooth transitions
+            animationTimer = new System.Threading.Timer(UpdateAnimation, null, 0, 16); // ~60 FPS
+            
             // Use Threading Timer to avoid suspension during fullscreen
             pollTimer = new System.Threading.Timer(PollTimerCallback, null, 0, ActiveIntervalMs);
             
@@ -392,6 +404,8 @@ namespace CpuTempApp
 
                         if (cpuChanged || gpuChanged)
                         {
+                            // Trigger update animation
+                            StartUpdateAnimation();
                     try
                     {
                         if (AppSettings.ShowCpu)
@@ -599,6 +613,63 @@ namespace CpuTempApp
             }
             
             base.WndProc(ref m);
+        }
+        
+        // Animation: Smooth scale effect when temperature updates
+        private void StartUpdateAnimation()
+        {
+            animationProgress = 0f;
+            isAnimating = true;
+        }
+        
+        // Update animation progress
+        private void UpdateAnimation(object? state)
+        {
+            if (!isAnimating) return;
+            
+            animationProgress += 0.016f / (AnimationDurationMs / 1000f); // Progress based on time
+            
+            if (animationProgress >= 1f)
+            {
+                animationProgress = 1f;
+                isAnimating = false;
+            }
+            
+            // Apply easing function (ease-out cubic)
+            float eased = 1 - (float)Math.Pow(1 - animationProgress, 3);
+            
+            // Scale effect: slightly expand during update
+            float scale = 1f + (eased * 0.05f); // Max 5% zoom
+            
+            try
+            {
+                this.BeginInvoke((Action)(() =>
+                {
+                    // Apply scale by adjusting font size slightly
+                    if (cpuLabel.Font != null)
+                    {
+                        float baseFontSize = 9f;
+                        float newFontSize = baseFontSize * scale;
+                        cpuLabel.Font = new Font("Segoe UI", newFontSize, FontStyle.Bold);
+                        gpuLabel.Font = new Font("Segoe UI", newFontSize, FontStyle.Bold);
+                    }
+                    
+                    // Glow effect: pulse the text color
+                    // Create a color that pulses between base color and brighter version
+                    int brightness = (int)(255 * eased); // Pulse brightness
+                    Color glowColor = Color.FromArgb(
+                        Math.Min(255, baseTextColor.R + brightness / 2),
+                        Math.Min(255, baseTextColor.G + brightness / 2),
+                        Math.Min(255, baseTextColor.B + brightness / 4)
+                    );
+                    
+                    cpuLabel.ForeColor = glowColor;
+                    gpuLabel.ForeColor = glowColor;
+                    
+                    Refresh();
+                }));
+            }
+            catch { }
         }
     }
 }
