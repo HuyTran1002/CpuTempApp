@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using LibreHardwareMonitor.Hardware;
 
 namespace CpuTempApp
@@ -90,12 +91,27 @@ namespace CpuTempApp
                         float? cpuTemp = null;
                         float? gpuTemp = null;
                         
-                        // Update all hardware sensors
+                        // Update all hardware sensors with timeout to prevent hangs
                         try
                         {
                             foreach (var hw in computer.Hardware)
                             {
-                                try { hw.Update(); } catch { }
+                                try
+                                {
+                                    // Add 2-second timeout for hw.Update() to prevent sensor driver hangs
+                                    var updateTask = Task.Run(() => hw.Update());
+                                    if (!updateTask.Wait(TimeSpan.FromSeconds(2)))
+                                    {
+                                        // Timeout occurred, skip this hardware
+                                        System.Diagnostics.Debug.WriteLine($"[SensorService] Timeout updating {hw.HardwareType}");
+                                        continue;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"[SensorService] Error updating hardware: {ex.Message}");
+                                }
+                                
                                 bool cpuPreferred = false, gpuPreferred = false;
                                 TraverseSensors(hw, ref cpuTemp, ref gpuTemp, ref cpuPreferred, ref gpuPreferred);
                             }
