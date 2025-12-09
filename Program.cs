@@ -21,10 +21,9 @@ namespace CpuTempApp
             // This thread won't be suspended by fullscreen apps
             SensorService.Start(AppSettings.ShowCpu, AppSettings.ShowGpu);
             
-            // Check for updates on startup (async, non-blocking)
+            // Check for updates immediately after startup (async, non-blocking)
             Task.Run(async () =>
             {
-                await Task.Delay(3000); // Wait 3 seconds after startup
                 try
                 {
                     var (hasUpdate, latestVersion) = await UpdateChecker.CheckForUpdateAsync();
