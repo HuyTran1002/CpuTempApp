@@ -61,6 +61,11 @@ namespace CpuTempApp
         private Point dragStartPoint;
         private double originalOpacity = 1.0; // Track original opacity
         public bool isPositionLocked = true;  // Position locked by default (prevent accidental drag)
+        
+        // Color feedback system (smooth, lightweight)
+        private System.Threading.Timer? colorResetTimer;
+        private DateTime lastColorChangeTime = DateTime.MinValue;
+        private const int ColorFeedbackDurationMs = 150;
 
         // Overlay no longer creates a tray icon; ControlForm owns the tray icon.
 
@@ -214,6 +219,9 @@ namespace CpuTempApp
             
             // Timer to re-assert topmost status every 500ms (helps with fullscreen apps)
             topmostTimer = new System.Threading.Timer(ReassertTopmost, null, 500, 500);
+            
+            // Color reset timer - runs every 50ms to reset colors when needed
+            colorResetTimer = new System.Threading.Timer(ColorResetCallback, null, 50, 50);
         }
 
         
@@ -438,6 +446,18 @@ namespace CpuTempApp
                             gpuLabel.Visible = false;
                         }
                         
+                        // Color feedback: highlight when temperature changes
+                        if (cpuChanged)
+                        {
+                            cpuLabel.ForeColor = Color.FromArgb(0, 255, 255); // Cyan highlight
+                            lastColorChangeTime = DateTime.Now;
+                        }
+                        if (gpuChanged)
+                        {
+                            gpuLabel.ForeColor = Color.FromArgb(0, 255, 255); // Cyan highlight
+                            lastColorChangeTime = DateTime.Now;
+                        }
+                        
                         // Update GPU position after CPU width changes
                         const int spacing = 4;  // 4px spacing between CPU and GPU
                         const int padding = 10;
@@ -580,11 +600,36 @@ namespace CpuTempApp
                 pollTimer?.Dispose();
                 topmostTimer?.Change(Timeout.Infinite, Timeout.Infinite);
                 topmostTimer?.Dispose();
+                colorResetTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+                colorResetTimer?.Dispose();
             }
             catch { }
 
             try { AppSettings.SettingsChanged -= OnSettingsChanged; } catch { }
             base.OnFormClosing(e);
+        }
+        
+        // Reset text color after highlight duration
+        private void ColorResetCallback(object? state)
+        {
+            if (DateTime.Now - lastColorChangeTime > TimeSpan.FromMilliseconds(ColorFeedbackDurationMs))
+            {
+                try
+                {
+                    this.BeginInvoke((Action)(() =>
+                    {
+                        if (cpuLabel.ForeColor.ToArgb() == Color.FromArgb(0, 255, 255).ToArgb())
+                        {
+                            cpuLabel.ForeColor = AppSettings.TextColor;
+                        }
+                        if (gpuLabel.ForeColor.ToArgb() == Color.FromArgb(0, 255, 255).ToArgb())
+                        {
+                            gpuLabel.ForeColor = AppSettings.TextColor;
+                        }
+                    }));
+                }
+                catch { }
+            }
         }
         
         protected override void WndProc(ref Message m)
