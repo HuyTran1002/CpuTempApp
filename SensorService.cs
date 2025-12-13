@@ -118,11 +118,16 @@ namespace CpuTempApp
                         }
                         catch { }
                         
-                        // Cache the results
+                        // Cache the results; preserve previous cached value if current poll returned null
                         lock (cacheLock)
                         {
-                            cachedCpuTemp = cpuTemp;
-                            cachedGpuTemp = gpuTemp;
+                            if (cpuTemp.HasValue)
+                                cachedCpuTemp = cpuTemp;
+                            // else keep previous cachedCpuTemp
+
+                            if (gpuTemp.HasValue)
+                                cachedGpuTemp = gpuTemp;
+                            // else keep previous cachedGpuTemp
                         }
                     }
                     

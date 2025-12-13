@@ -347,23 +347,26 @@ namespace CpuTempApp
                         {
                             cpuBuffer.Enqueue(cpuMax.Value);
                             if (cpuBuffer.Count > 3) cpuBuffer.Dequeue();
+
+                            // Use the buffered average for spike detection to avoid reacting to single noisy samples
+                            var avgCpu = cpuBuffer.Average();
                             if (lastCpu.HasValue)
                             {
-                                float diff = Math.Abs(cpuMax.Value - lastCpu.Value);
+                                float diff = Math.Abs(avgCpu - lastCpu.Value);
                                 if (diff > SpikeThreshold)
                                 {
-                                    // Spike detected, use last value
+                                    // Spike detected, keep last displayed value
                                     displayCpu = lastCpu;
                                 }
                                 else
                                 {
-                                    // Normal fluctuation, use average
-                                    displayCpu = cpuBuffer.Average();
+                                    // Normal fluctuation, use buffered average
+                                    displayCpu = avgCpu;
                                 }
                             }
                             else
                             {
-                                displayCpu = cpuBuffer.Average();
+                                displayCpu = avgCpu;
                             }
                         }
                         
@@ -372,25 +375,26 @@ namespace CpuTempApp
                         {
                             gpuBuffer.Enqueue(gpuMax.Value);
                             if (gpuBuffer.Count > 3) gpuBuffer.Dequeue();
-                            
-                            // Reject obvious spikes
+
+                            // Use the buffered average for spike detection to avoid reacting to single noisy samples
+                            var avgGpu = gpuBuffer.Average();
                             if (lastGpu.HasValue)
                             {
-                                float diff = Math.Abs(gpuMax.Value - lastGpu.Value);
+                                float diff = Math.Abs(avgGpu - lastGpu.Value);
                                 if (diff > SpikeThreshold)
                                 {
-                                    // Spike detected, use last value
+                                    // Spike detected, keep last displayed value
                                     displayGpu = lastGpu;
                                 }
                                 else
                                 {
-                                    // Normal fluctuation, use average
-                                    displayGpu = gpuBuffer.Average();
+                                    // Normal fluctuation, use buffered average
+                                    displayGpu = avgGpu;
                                 }
                             }
                             else
                             {
-                                displayGpu = gpuBuffer.Average();
+                                displayGpu = avgGpu;
                             }
                         }
 
