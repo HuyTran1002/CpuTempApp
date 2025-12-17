@@ -42,8 +42,8 @@ namespace CpuTempApp
         private const uint SWP_NOACTIVATE = 0x0010;
         private Label cpuLabel;
         private Label gpuLabel;
-        private System.Threading.Timer? pollTimer;
-        private System.Threading.Timer? topmostTimer;
+        private System.Threading.Timer pollTimer;
+        private System.Threading.Timer topmostTimer;
         private volatile bool settingsChanged = false;
         private float? lastCpu;
         private float? lastGpu;
@@ -63,7 +63,9 @@ namespace CpuTempApp
         public bool isPositionLocked = true;  // Position locked by default (prevent accidental drag)
         
         // Color feedback system (smooth, lightweight)
-        private System.Threading.Timer? colorResetTimer;
+        private System.Threading.Timer colorResetTimer;
+            // Used to track how long CPU temp is missing
+            private DateTime? lastCpuNullTime = null;
         private DateTime lastColorChangeTime = DateTime.MinValue;
         private const int ColorFeedbackDurationMs = 150;
 
@@ -293,7 +295,7 @@ namespace CpuTempApp
             catch { }
         }
 
-        private void ReassertTopmost(object? state)
+        private void ReassertTopmost(object state)
         {
             if (this.IsDisposed || !this.IsHandleCreated)
                 return;
@@ -307,7 +309,7 @@ namespace CpuTempApp
         }
 
         
-        private void PollTimerCallback(object? state)
+        private void PollTimerCallback(object state)
         {
             // Run on UI thread using BeginInvoke
             if (this.IsDisposed || !this.IsHandleCreated)
@@ -342,31 +344,47 @@ namespace CpuTempApp
                         float? displayCpu = null;
                         float? displayGpu = null;
                         
-                        // CPU: Apply moving average smoothing
+                        // CPU: Apply moving average smoothing with tolerant fallback
                         if (cpuMax.HasValue)
                         {
                             cpuBuffer.Enqueue(cpuMax.Value);
                             if (cpuBuffer.Count > 3) cpuBuffer.Dequeue();
-
-                            // Use the buffered average for spike detection to avoid reacting to single noisy samples
                             var avgCpu = cpuBuffer.Average();
                             if (lastCpu.HasValue)
                             {
                                 float diff = Math.Abs(avgCpu - lastCpu.Value);
                                 if (diff > SpikeThreshold)
                                 {
-                                    // Spike detected, keep last displayed value
                                     displayCpu = lastCpu;
                                 }
                                 else
                                 {
-                                    // Normal fluctuation, use buffered average
                                     displayCpu = avgCpu;
                                 }
                             }
                             else
                             {
                                 displayCpu = avgCpu;
+                            }
+                            lastCpuNullTime = null; // reset null timer
+                        }
+                        else
+                        {
+                            // If CPU temp is missing, keep last value for up to 2 seconds before showing N/A
+                            if (lastCpu.HasValue)
+                            {
+                                if (lastCpuNullTime == null)
+                                    lastCpuNullTime = DateTime.Now;
+                                if ((DateTime.Now - lastCpuNullTime.Value).TotalSeconds < 2)
+                                {
+                                    displayCpu = lastCpu;
+                                }
+                                else
+                                {
+                                    displayCpu = null;
+                                    // Optionally log for diagnostics
+                                    System.Diagnostics.Debug.WriteLine($"[OverlayForm] CPU temp missing for over 2s at {DateTime.Now}");
+                                }
                             }
                         }
                         
@@ -520,7 +538,7 @@ namespace CpuTempApp
         // Overlay does not create a tray icon. ControlForm is the single owner of the tray icon.
 
         // Dragging functionality
-        private void OverlayForm_MouseDown(object? sender, MouseEventArgs e)
+        private void OverlayForm_MouseDown(object sender, MouseEventArgs e)
         {
             // Only allow dragging when position is unlocked
             if (e.Button == MouseButtons.Left && !isPositionLocked)
@@ -532,7 +550,7 @@ namespace CpuTempApp
             }
         }
 
-        private void OverlayForm_MouseMove(object? sender, MouseEventArgs e)
+        private void OverlayForm_MouseMove(object sender, MouseEventArgs e)
         {
             if (isDragging)
             {
@@ -543,7 +561,7 @@ namespace CpuTempApp
             }
         }
 
-        private void OverlayForm_MouseUp(object? sender, MouseEventArgs e)
+        private void OverlayForm_MouseUp(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
             {
@@ -560,7 +578,7 @@ namespace CpuTempApp
             }
         }
         
-        private void OverlayForm_MouseEnter(object? sender, EventArgs e)
+        private void OverlayForm_MouseEnter(object sender, EventArgs e)
         {
             // Slight brightness increase when hovering to show it's interactive (only if unlocked)
             if (!isDragging && !isPositionLocked)
@@ -569,7 +587,7 @@ namespace CpuTempApp
             }
         }
         
-        private void OverlayForm_MouseLeave(object? sender, EventArgs e)
+        private void OverlayForm_MouseLeave(object sender, EventArgs e)
         {
             // Restore original opacity when mouse leaves
             if (!isDragging && !isPositionLocked)
@@ -614,7 +632,7 @@ namespace CpuTempApp
         }
         
         // Reset text color after highlight duration
-        private void ColorResetCallback(object? state)
+        private void ColorResetCallback(object state)
         {
             if (DateTime.Now - lastColorChangeTime > TimeSpan.FromMilliseconds(ColorFeedbackDurationMs))
             {

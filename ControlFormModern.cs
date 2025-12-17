@@ -291,7 +291,6 @@ namespace CpuTempApp
                 if (overlay != null)
                 {
                     overlay.isPositionLocked = !overlay.isPositionLocked;
-                    System.Diagnostics.Debug.WriteLine($"[ControlForm] Toggle position lock: isPositionLocked={overlay.isPositionLocked}");
                     if (overlay.isPositionLocked)
                     {
                         // LOCKING - position is now locked
