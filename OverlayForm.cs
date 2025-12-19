@@ -42,7 +42,7 @@ namespace CpuTempApp
         private const uint SWP_NOACTIVATE = 0x0010;
         private Label cpuLabel;
         private Label gpuLabel;
-        private System.Threading.Timer pollTimer;
+        private System.Windows.Forms.Timer pollTimer;
         private System.Threading.Timer topmostTimer;
         private volatile bool settingsChanged = false;
         private float? lastCpu;
@@ -216,8 +216,11 @@ namespace CpuTempApp
             }
 
             AppSettings.SettingsChanged += OnSettingsChanged;
-            // Use Threading Timer to avoid suspension during fullscreen
-            pollTimer = new System.Threading.Timer(PollTimerCallback, null, 0, ActiveIntervalMs);
+            // Use Forms Timer để đảm bảo chạy trên UI thread, update mượt hơn
+            pollTimer = new System.Windows.Forms.Timer();
+            pollTimer.Interval = ActiveIntervalMs;
+            pollTimer.Tick += (s, e) => PollTimerCallback(null);
+            pollTimer.Start();
             
             // Timer to re-assert topmost status every 500ms (helps with fullscreen apps)
             topmostTimer = new System.Threading.Timer(ReassertTopmost, null, 500, 500);
@@ -309,222 +312,205 @@ namespace CpuTempApp
         }
 
         
+        // Đảm bảo luôn chạy trên UI thread
         private void PollTimerCallback(object state)
         {
-            // Run on UI thread using BeginInvoke
             if (this.IsDisposed || !this.IsHandleCreated)
                 return;
 
-            try
+            // Settings are now handled by SensorService
+            if (!AppSettings.ShowCpu && !AppSettings.ShowGpu)
             {
-                this.BeginInvoke((Action)(() =>
+                // nothing to show — clear labels
+                if (lastCpu != null || lastGpu != null)
                 {
-                    try
-                    {
-                        // Settings are now handled by SensorService
-
-                        if (!AppSettings.ShowCpu && !AppSettings.ShowGpu)
-                        {
-                            // nothing to show — clear labels
-                            if (lastCpu != null || lastGpu != null)
-                            {
-                                lastCpu = null; lastGpu = null;
-                                cpuLabel.Text = "";
-                                gpuLabel.Text = "";
-                            }
-                            return;
-                        }
-
-                        
-                        // Get sensor values from independent SensorService (won't be suspended by fullscreen)
-                        float? cpuMax = SensorService.GetCachedCpuTemp();
-                        float? gpuMax = SensorService.GetCachedGpuTemp();
-
-                        // Apply smoothing to both CPU and GPU for stable readings
-                        float? displayCpu = null;
-                        float? displayGpu = null;
-                        
-                        // CPU: Apply moving average smoothing with tolerant fallback
-                        if (cpuMax.HasValue)
-                        {
-                            cpuBuffer.Enqueue(cpuMax.Value);
-                            if (cpuBuffer.Count > 3) cpuBuffer.Dequeue();
-                            var avgCpu = cpuBuffer.Average();
-                            if (lastCpu.HasValue)
-                            {
-                                float diff = Math.Abs(avgCpu - lastCpu.Value);
-                                if (diff > SpikeThreshold)
-                                {
-                                    displayCpu = lastCpu;
-                                }
-                                else
-                                {
-                                    displayCpu = avgCpu;
-                                }
-                            }
-                            else
-                            {
-                                displayCpu = avgCpu;
-                            }
-                            lastCpuNullTime = null; // reset null timer
-                        }
-                        else
-                        {
-                            // If CPU temp is missing, keep last value for up to 2 seconds before showing N/A
-                            if (lastCpu.HasValue)
-                            {
-                                if (lastCpuNullTime == null)
-                                    lastCpuNullTime = DateTime.Now;
-                                if ((DateTime.Now - lastCpuNullTime.Value).TotalSeconds < 2)
-                                {
-                                    displayCpu = lastCpu;
-                                }
-                                else
-                                {
-                                    displayCpu = null;
-                                    // Optionally log for diagnostics
-                                    System.Diagnostics.Debug.WriteLine($"[OverlayForm] CPU temp missing for over 2s at {DateTime.Now}");
-                                }
-                            }
-                        }
-                        
-                        // GPU: Apply moving average smoothing
-                        if (gpuMax.HasValue)
-                        {
-                            gpuBuffer.Enqueue(gpuMax.Value);
-                            if (gpuBuffer.Count > 3) gpuBuffer.Dequeue();
-
-                            // Use the buffered average for spike detection to avoid reacting to single noisy samples
-                            var avgGpu = gpuBuffer.Average();
-                            if (lastGpu.HasValue)
-                            {
-                                float diff = Math.Abs(avgGpu - lastGpu.Value);
-                                if (diff > SpikeThreshold)
-                                {
-                                    // Spike detected, keep last displayed value
-                                    displayGpu = lastGpu;
-                                }
-                                else
-                                {
-                                    // Normal fluctuation, use buffered average
-                                    displayGpu = avgGpu;
-                                }
-                            }
-                            else
-                            {
-                                displayGpu = avgGpu;
-                            }
-                        }
-
-                        // update UI only when values changed
-                        var cpuChanged = !NullableEquals(displayCpu, lastCpu);
-                        var gpuChanged = !NullableEquals(displayGpu, lastGpu);
-
-                        if (cpuChanged || gpuChanged)
-                        {
-                    try
-                    {
-                        if (AppSettings.ShowCpu)
-                        {
-                            if (displayCpu.HasValue)
-                            {
-                                cpuLabel.Text = $"CPU: {displayCpu.Value,5:F1}°C";
-                                cpuJustEnabled = false;
-                            }
-                            else if (cpuJustEnabled)
-                            {
-                                cpuLabel.Text = "CPU: --°C";
-                            }
-                            else
-                            {
-                                cpuLabel.Text = "CPU: N/A";
-                            }
-                            cpuLabel.Visible = true;
-                        }
-                        else
-                        {
-                            cpuLabel.Visible = false;
-                        }
-
-                        if (AppSettings.ShowGpu)
-                        {
-                            if (displayGpu.HasValue)
-                            {
-                                gpuLabel.Text = $"GPU: {displayGpu.Value,5:F1}°C";
-                                gpuJustEnabled = false;
-                            }
-                            else if (gpuJustEnabled)
-                            {
-                                gpuLabel.Text = "GPU: --°C";
-                            }
-                            else
-                            {
-                                gpuLabel.Text = "GPU: N/A";
-                            }
-                            gpuLabel.Visible = true;
-                        }
-                        else
-                        {
-                            gpuLabel.Visible = false;
-                        }
-                        
-                        // Color feedback: highlight when temperature changes
-                        if (cpuChanged)
-                        {
-                            cpuLabel.ForeColor = Color.FromArgb(0, 255, 255); // Cyan highlight
-                            lastColorChangeTime = DateTime.Now;
-                        }
-                        if (gpuChanged)
-                        {
-                            gpuLabel.ForeColor = Color.FromArgb(0, 255, 255); // Cyan highlight
-                            lastColorChangeTime = DateTime.Now;
-                        }
-                        
-                        // Update GPU position after CPU width changes
-                        const int spacing = 4;  // 4px spacing between CPU and GPU
-                        const int padding = 10;
-                        cpuLabel.Location = new Point(padding, 0);
-                        if (AppSettings.ShowCpu && AppSettings.ShowGpu)
-                        {
-                            gpuLabel.Location = new Point(padding + cpuLabel.Width + spacing, 0);
-                        }
-                        else if (AppSettings.ShowGpu)
-                        {
-                            gpuLabel.Location = new Point(padding, 0);
-                        }
-                        
-                        // Update form width to fit content
-                        int formWidth = padding;
-                        if (AppSettings.ShowCpu)
-                            formWidth += cpuLabel.Width;
-                        if (AppSettings.ShowGpu)
-                        {
-                            if (AppSettings.ShowCpu)
-                                formWidth += spacing + gpuLabel.Width;
-                            else
-                                formWidth += gpuLabel.Width;
-                        }
-                        formWidth += padding;
-                        this.Width = Math.Max(formWidth, 150);
-                        
-                        // Re-center if using default position (after width change)
-                        if (AppSettings.OverlayX == -1)
-                        {
-                            var screen = Screen.PrimaryScreen.Bounds;
-                            this.Location = new Point((screen.Width - this.Width) / 2, AppSettings.OverlayY);
-                        }
-                        
-                        // Update last values
-                        lastCpu = displayCpu;
-                        lastGpu = displayGpu;
-                    }
-                    catch { }
+                    lastCpu = null; lastGpu = null;
+                    cpuLabel.Text = "";
+                    gpuLabel.Text = "";
                 }
-                    }
-                    catch { }
-                }));
+                return;
             }
-            catch { }
+
+            // Get sensor values from independent SensorService (won't be suspended by fullscreen)
+            float? cpuMax = SensorService.GetCachedCpuTemp();
+            float? gpuMax = SensorService.GetCachedGpuTemp();
+
+            // Apply smoothing to both CPU and GPU for stable readings
+            float? displayCpu = null;
+            float? displayGpu = null;
+
+            // CPU: Apply moving average smoothing with tolerant fallback
+            if (cpuMax.HasValue)
+            {
+                cpuBuffer.Enqueue(cpuMax.Value);
+                if (cpuBuffer.Count > 3) cpuBuffer.Dequeue();
+                var avgCpu = cpuBuffer.Average();
+                if (lastCpu.HasValue)
+                {
+                    float diff = Math.Abs(avgCpu - lastCpu.Value);
+                    if (diff > SpikeThreshold)
+                    {
+                        displayCpu = lastCpu;
+                    }
+                    else
+                    {
+                        displayCpu = avgCpu;
+                    }
+                }
+                else
+                {
+                    displayCpu = avgCpu;
+                }
+                lastCpuNullTime = null; // reset null timer
+            }
+            else
+            {
+                // If CPU temp is missing, keep last value for up to 2 seconds before showing N/A
+                if (lastCpu.HasValue)
+                {
+                    if (lastCpuNullTime == null)
+                        lastCpuNullTime = DateTime.Now;
+                    if ((DateTime.Now - lastCpuNullTime.Value).TotalSeconds < 2)
+                    {
+                        displayCpu = lastCpu;
+                    }
+                    else
+                    {
+                        displayCpu = null;
+                        // Optionally log for diagnostics
+                        System.Diagnostics.Debug.WriteLine($"[OverlayForm] CPU temp missing for over 2s at {DateTime.Now}");
+                    }
+                }
+            }
+
+            // GPU: Apply moving average smoothing
+            if (gpuMax.HasValue)
+            {
+                gpuBuffer.Enqueue(gpuMax.Value);
+                if (gpuBuffer.Count > 3) gpuBuffer.Dequeue();
+
+                // Use the buffered average for spike detection to avoid reacting to single noisy samples
+                var avgGpu = gpuBuffer.Average();
+                if (lastGpu.HasValue)
+                {
+                    float diff = Math.Abs(avgGpu - lastGpu.Value);
+                    if (diff > SpikeThreshold)
+                    {
+                        // Spike detected, keep last displayed value
+                        displayGpu = lastGpu;
+                    }
+                    else
+                    {
+                        // Normal fluctuation, use buffered average
+                        displayGpu = avgGpu;
+                    }
+                }
+                else
+                {
+                    displayGpu = avgGpu;
+                }
+            }
+
+            // update UI only when values changed
+            var cpuChanged = !NullableEquals(displayCpu, lastCpu);
+            var gpuChanged = !NullableEquals(displayGpu, lastGpu);
+
+            if (cpuChanged || gpuChanged)
+            {
+                if (AppSettings.ShowCpu)
+                {
+                    if (displayCpu.HasValue)
+                    {
+                        cpuLabel.Text = $"CPU: {displayCpu.Value,5:F1}°C";
+                        cpuJustEnabled = false;
+                    }
+                    else if (cpuJustEnabled)
+                    {
+                        cpuLabel.Text = "CPU: --°C";
+                    }
+                    else
+                    {
+                        cpuLabel.Text = "CPU: N/A";
+                    }
+                    cpuLabel.Visible = true;
+                }
+                else
+                {
+                    cpuLabel.Visible = false;
+                }
+
+                if (AppSettings.ShowGpu)
+                {
+                    if (displayGpu.HasValue)
+                    {
+                        gpuLabel.Text = $"GPU: {displayGpu.Value,5:F1}°C";
+                        gpuJustEnabled = false;
+                    }
+                    else if (gpuJustEnabled)
+                    {
+                        gpuLabel.Text = "GPU: --°C";
+                    }
+                    else
+                    {
+                        gpuLabel.Text = "GPU: N/A";
+                    }
+                    gpuLabel.Visible = true;
+                }
+                else
+                {
+                    gpuLabel.Visible = false;
+                }
+
+                // Color feedback: highlight when temperature changes
+                if (cpuChanged)
+                {
+                    cpuLabel.ForeColor = Color.FromArgb(0, 255, 255); // Cyan highlight
+                    lastColorChangeTime = DateTime.Now;
+                }
+                if (gpuChanged)
+                {
+                    gpuLabel.ForeColor = Color.FromArgb(0, 255, 255); // Cyan highlight
+                    lastColorChangeTime = DateTime.Now;
+                }
+
+                // Update GPU position after CPU width changes
+                const int spacing = 4;  // 4px spacing between CPU and GPU
+                const int padding = 10;
+                cpuLabel.Location = new Point(padding, 0);
+                if (AppSettings.ShowCpu && AppSettings.ShowGpu)
+                {
+                    gpuLabel.Location = new Point(padding + cpuLabel.Width + spacing, 0);
+                }
+                else if (AppSettings.ShowGpu)
+                {
+                    gpuLabel.Location = new Point(padding, 0);
+                }
+
+                // Update form width to fit content
+                int formWidth = padding;
+                if (AppSettings.ShowCpu)
+                    formWidth += cpuLabel.Width;
+                if (AppSettings.ShowGpu)
+                {
+                    if (AppSettings.ShowCpu)
+                        formWidth += spacing + gpuLabel.Width;
+                    else
+                        formWidth += gpuLabel.Width;
+                }
+                formWidth += padding;
+                this.Width = Math.Max(formWidth, 150);
+
+                // Re-center if using default position (after width change)
+                if (AppSettings.OverlayX == -1)
+                {
+                    var screen = Screen.PrimaryScreen.Bounds;
+                    this.Location = new Point((screen.Width - this.Width) / 2, AppSettings.OverlayY);
+                }
+
+                // Update last values
+                lastCpu = displayCpu;
+                lastGpu = displayGpu;
+            }
         }
 
         private static bool NullableEquals(float? a, float? b)
@@ -618,7 +604,7 @@ namespace CpuTempApp
             // Clean up: stop timer, close computer
             try
             {
-                pollTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+                pollTimer?.Stop();
                 pollTimer?.Dispose();
                 topmostTimer?.Change(Timeout.Infinite, Timeout.Infinite);
                 topmostTimer?.Dispose();
