@@ -58,6 +58,14 @@ namespace CpuTempApp
         
         // For dragging the overlay
         private bool isDragging = false;
+
+            // --- Thêm biến kiểm tra label bị đơ ---
+            private System.Threading.Timer labelCheckTimer;
+            private string lastCpuLabelText = null;
+            private string lastGpuLabelText = null;
+            private DateTime lastCpuLabelUpdate = DateTime.Now;
+            private DateTime lastGpuLabelUpdate = DateTime.Now;
+            private const int LabelFreezeTimeoutMs = 3000; // 3 giây không đổi sẽ làm mới
         private Point dragStartPoint;
         private double originalOpacity = 1.0; // Track original opacity
         public bool isPositionLocked = true;  // Position locked by default (prevent accidental drag)
@@ -236,6 +244,12 @@ namespace CpuTempApp
 
             // Color reset timer - runs every 50ms to reset colors when needed
             colorResetTimer = new System.Threading.Timer(ColorResetCallback, null, 50, 50);
+
+                // Timer kiểm tra label bị đơ
+                labelCheckTimer = new System.Threading.Timer(LabelFreezeCheckCallback, null, 2000, 2000);
+
+                // Timer kiểm tra label bị đơ
+                labelCheckTimer = new System.Threading.Timer(LabelFreezeCheckCallback, null, 2000, 2000);
         }
 
         
@@ -432,14 +446,20 @@ namespace CpuTempApp
                     {
                         cpuLabel.Text = $"CPU: {displayCpu.Value,5:F1}°C";
                         cpuJustEnabled = false;
+                            lastCpuLabelText = cpuLabel.Text;
+                            lastCpuLabelUpdate = DateTime.Now;
                     }
                     else if (cpuJustEnabled)
                     {
                         cpuLabel.Text = "CPU: --°C";
+                            lastCpuLabelText = cpuLabel.Text;
+                            lastCpuLabelUpdate = DateTime.Now;
                     }
                     else
                     {
                         cpuLabel.Text = "CPU: N/A";
+                            lastCpuLabelText = cpuLabel.Text;
+                            lastCpuLabelUpdate = DateTime.Now;
                     }
                     cpuLabel.Visible = true;
                 }
@@ -454,14 +474,20 @@ namespace CpuTempApp
                     {
                         gpuLabel.Text = $"GPU: {displayGpu.Value,5:F1}°C";
                         gpuJustEnabled = false;
+                            lastGpuLabelText = gpuLabel.Text;
+                            lastGpuLabelUpdate = DateTime.Now;
                     }
                     else if (gpuJustEnabled)
                     {
                         gpuLabel.Text = "GPU: --°C";
+                            lastGpuLabelText = gpuLabel.Text;
+                            lastGpuLabelUpdate = DateTime.Now;
                     }
                     else
                     {
                         gpuLabel.Text = "GPU: N/A";
+                            lastGpuLabelText = gpuLabel.Text;
+                            lastGpuLabelUpdate = DateTime.Now;
                     }
                     gpuLabel.Visible = true;
                 }
@@ -528,6 +554,68 @@ namespace CpuTempApp
             if (a.HasValue != b.HasValue) return false;
             return Math.Abs(a.Value - b.Value) < 0.1f; // faster response like AIDA64
         }
+
+            // Hàm kiểm tra label bị đơ
+            private void LabelFreezeCheckCallback(object state)
+            {
+                try
+                {
+                    if (this.IsHandleCreated && !this.IsDisposed)
+                    {
+                        this.BeginInvoke((Action)(() =>
+                        {
+                            // Lấy feedback thực tế từ SensorService (giống logic cập nhật label)
+                            float? feedbackCpu = SensorService.GetCpuTemperature();
+                            float? feedbackGpu = SensorService.GetGpuTemperature();
+
+                            // Kiểm tra CPU label
+                            if (AppSettings.ShowCpu)
+                            {
+                                string currentText = cpuLabel.Text;
+                                if (currentText == lastCpuLabelText)
+                                {
+                                    // Không đổi text, kiểm tra timeout
+                                    if ((DateTime.Now - lastCpuLabelUpdate).TotalMilliseconds > LabelFreezeTimeoutMs)
+                                    {
+                                        // Nếu feedback khác với label hoặc label bị đơ, làm mới
+                                        string expected = feedbackCpu.HasValue ? $"CPU: {feedbackCpu.Value,5:F1}°C" : (feedbackCpu == null ? "CPU: --°C" : "CPU: N/A");
+                                        if (currentText != expected)
+                                            cpuLabel.Text = expected;
+                                        lastCpuLabelUpdate = DateTime.Now;
+                                    }
+                                }
+                                else
+                                {
+                                    lastCpuLabelText = currentText;
+                                    lastCpuLabelUpdate = DateTime.Now;
+                                }
+                            }
+
+                            // Kiểm tra GPU label
+                            if (AppSettings.ShowGpu)
+                            {
+                                string currentText = gpuLabel.Text;
+                                if (currentText == lastGpuLabelText)
+                                {
+                                    if ((DateTime.Now - lastGpuLabelUpdate).TotalMilliseconds > LabelFreezeTimeoutMs)
+                                    {
+                                        string expected = feedbackGpu.HasValue ? $"GPU: {feedbackGpu.Value,5:F1}°C" : (feedbackGpu == null ? "GPU: --°C" : "GPU: N/A");
+                                        if (currentText != expected)
+                                            gpuLabel.Text = expected;
+                                        lastGpuLabelUpdate = DateTime.Now;
+                                    }
+                                }
+                                else
+                                {
+                                    lastGpuLabelText = currentText;
+                                    lastGpuLabelUpdate = DateTime.Now;
+                                }
+                            }
+                        }));
+                    }
+                }
+                catch { }
+            }
 
         
         // Overlay does not create a tray icon. ControlForm is the single owner of the tray icon.
