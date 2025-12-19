@@ -565,8 +565,8 @@ namespace CpuTempApp
                         this.BeginInvoke((Action)(() =>
                         {
                             // Lấy feedback thực tế từ SensorService (giống logic cập nhật label)
-                            float? feedbackCpu = SensorService.GetCpuTemperature();
-                            float? feedbackGpu = SensorService.GetGpuTemperature();
+                            float? feedbackCpu = SensorService.GetCachedCpuTemp();
+                            float? feedbackGpu = SensorService.GetCachedGpuTemp();
 
                             // Kiểm tra CPU label
                             if (AppSettings.ShowCpu)
