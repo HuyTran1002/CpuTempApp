@@ -216,15 +216,24 @@ namespace CpuTempApp
             }
 
             AppSettings.SettingsChanged += OnSettingsChanged;
-            // Use Forms Timer để đảm bảo chạy trên UI thread, update mượt hơn
-            pollTimer = new System.Windows.Forms.Timer();
-            pollTimer.Interval = ActiveIntervalMs;
-            pollTimer.Tick += (s, e) => PollTimerCallback(null);
-            pollTimer.Start();
-            
+            // Sử dụng System.Threading.Timer để cập nhật nhiệt độ, tránh phụ thuộc UI thread
+            pollTimer = null;
+            var pollThreadingTimer = new System.Threading.Timer(_ =>
+            {
+                try
+                {
+                    // Đảm bảo cập nhật UI đúng thread
+                    if (this.IsHandleCreated && !this.IsDisposed)
+                    {
+                        this.BeginInvoke((Action)(() => PollTimerCallback(null)));
+                    }
+                }
+                catch { }
+            }, null, 0, ActiveIntervalMs);
+
             // Timer to re-assert topmost status every 500ms (helps with fullscreen apps)
             topmostTimer = new System.Threading.Timer(ReassertTopmost, null, 500, 500);
-            
+
             // Color reset timer - runs every 50ms to reset colors when needed
             colorResetTimer = new System.Threading.Timer(ColorResetCallback, null, 50, 50);
         }
@@ -604,8 +613,6 @@ namespace CpuTempApp
             // Clean up: stop timer, close computer
             try
             {
-                pollTimer?.Stop();
-                pollTimer?.Dispose();
                 topmostTimer?.Change(Timeout.Infinite, Timeout.Infinite);
                 topmostTimer?.Dispose();
                 colorResetTimer?.Change(Timeout.Infinite, Timeout.Infinite);
