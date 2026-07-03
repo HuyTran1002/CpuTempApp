@@ -1,254 +1,156 @@
 using System;
 using System.Threading;
-using System.Threading.Tasks;
-using LibreHardwareMonitor.Hardware;
 
 namespace CpuTempApp
 {
     /// <summary>
-    /// Independent background sensor service
-    /// Runs on a separate thread that won't be suspended by fullscreen apps
+    /// Background sensor polling service.
+    /// Reads CPU/GPU temperatures exclusively from HWiNFO64 shared memory.
+    ///
+    /// On first start the service:
+    ///   1. Finds HWiNFO64 installation automatically
+    ///   2. Enables Shared Memory Support via registry / INI
+    ///   3. Launches HWiNFO64 minimised if it is not already running
+    ///   4. Polls shared memory every 500 ms once HWiNFO64 is live
+    ///
+    /// If HWiNFO64 is not installed the overlay shows "N/A" and the log
+    /// contains a clear diagnostic message.
     /// </summary>
     public static class SensorService
     {
-        private static Thread? sensorThread;
-        private static volatile bool isRunning = false;
-        private static Computer? computer;
-        
-        // Thread-safe cached values
-        private static float? cachedCpuTemp = null;
-        private static float? cachedGpuTemp = null;
-        private static object cacheLock = new object();
-        
-        public static float? GetCachedCpuTemp()
+        private static Thread           sensorThread;
+        private static volatile bool    isRunning  = false;
+        private static bool             wantCpu    = true;
+        private static bool             wantGpu    = true;
+
+        // Thread-safe cached sensor values
+        private static float?           cachedCpuTemp = null;
+        private static float?           cachedGpuTemp = null;
+        private static readonly object  cacheLock = new object();
+
+        // How long to wait (ms) between launch and first shared-memory check
+        private const int LaunchWaitMs     = 8_000;  // HWiNFO64 needs ~8 s to start
+        private const int PollIntervalMs   = 500;
+        private const int RetryIntervalMs  = 5_000;  // when waiting for HWiNFO64 to appear
+
+        // ── Public accessors ────────────────────────────────────────────────
+
+        public static float? GetCachedCpuTemp() { lock (cacheLock) { return cachedCpuTemp; } }
+        public static float? GetCachedGpuTemp() { lock (cacheLock) { return cachedGpuTemp; } }
+
+        /// <summary>Human-readable status for diagnostics / ControlForm tooltip.</summary>
+        public static string StatusMessage => HWiNFOReader.Status switch
         {
-            lock (cacheLock)
-            {
-                return cachedCpuTemp;
-            }
-        }
-        
-        public static float? GetCachedGpuTemp()
-        {
-            lock (cacheLock)
-            {
-                return cachedGpuTemp;
-            }
-        }
-        
-        /// <summary>
-        /// Start the independent sensor polling thread
-        /// </summary>
+            HWiNFOReader.HWiNFOStatus.Running     => "HWiNFO64 (shared memory)",
+            HWiNFOReader.HWiNFOStatus.Launching   => "Waiting for HWiNFO64…",
+            HWiNFOReader.HWiNFOStatus.NotInstalled => "HWiNFO64 not installed",
+            _                                      => "N/A",
+        };
+
+        // ── Lifecycle ────────────────────────────────────────────────────────
+
+        /// <summary>Start the background sensor thread.</summary>
         public static void Start(bool showCpu, bool showGpu)
         {
             if (isRunning) return;
-            
+            wantCpu   = showCpu;
+            wantGpu   = showGpu;
             isRunning = true;
-            computer = new Computer { IsCpuEnabled = showCpu, IsGpuEnabled = showGpu };
-            try { computer.Open(); } catch { }
-            
-            sensorThread = new Thread(SensorThreadProc)
+
+            // Write startup log header
+            WriteLog($"=== CpuTempApp SensorService started at {DateTime.Now} ===\n" +
+                     $"ShowCpu={showCpu}, ShowGpu={showGpu}");
+
+            // Kick off HWiNFO64 discovery + launch on a pool thread so we don't block UI
+            ThreadPool.QueueUserWorkItem(_ => HWiNFOReader.EnsureRunning());
+
+            sensorThread = new Thread(SensorLoop)
             {
-                IsBackground = false,  // Keep process alive
-                Priority = ThreadPriority.AboveNormal,  // Higher priority to avoid suspension
-                Name = "CpuTempAppSensorThread"
+                IsBackground = false,
+                Priority     = ThreadPriority.AboveNormal,
+                Name         = "CpuTempAppSensorThread",
             };
             sensorThread.Start();
         }
-        
-        /// <summary>
-        /// Stop the sensor polling thread
-        /// </summary>
+
+        /// <summary>Stop the background sensor thread.</summary>
         public static void Stop()
         {
             isRunning = false;
-            if (sensorThread != null)
-            {
-                try { sensorThread.Join(3000); } catch { }
-            }
-            try { computer?.Close(); } catch { }
+            try { sensorThread?.Join(3_000); } catch { }
         }
-        
-        /// <summary>
-        /// Update sensor configuration (e.g., when settings change)
-        /// </summary>
+
+        /// <summary>Call when sensor settings (show cpu/gpu) change.</summary>
         public static void UpdateConfig(bool showCpu, bool showGpu)
         {
-            try { computer?.Close(); } catch { }
-            computer = new Computer { IsCpuEnabled = showCpu, IsGpuEnabled = showGpu };
-            try { computer.Open(); } catch { }
+            wantCpu = showCpu;
+            wantGpu = showGpu;
         }
-        
-        // Background thread: Poll sensors continuously
-        private static void SensorThreadProc()
+
+        // ── Background loop ──────────────────────────────────────────────────
+
+        private static void SensorLoop()
         {
+            // Give HWiNFO64 time to start before first poll
+            bool initialWaitDone = false;
+
             while (isRunning)
             {
                 try
                 {
-                    if (computer != null)
+                    // Check whether HWiNFO shared memory is available
+                    bool live = HWiNFOReader.CheckStatus();
+
+                    if (!live)
                     {
-                        float? cpuTemp = null;
-                        float? gpuTemp = null;
-                        
-                        // Update all hardware sensors with timeout to prevent hangs
-                        try
-                        {
-                            foreach (var hw in computer.Hardware)
-                            {
-                                try
-                                {
-                                    // Add 2-second timeout for hw.Update() to prevent sensor driver hangs
-                                    var updateTask = Task.Run(() => hw.Update());
-                                    if (!updateTask.Wait(TimeSpan.FromSeconds(2)))
-                                    {
-                                        // Timeout occurred, skip this hardware
-                                        System.Diagnostics.Debug.WriteLine($"[SensorService] Timeout updating {hw.HardwareType}");
-                                        continue;
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"[SensorService] Error updating hardware: {ex.Message}");
-                                }
-                                
-                                bool cpuPreferred = false, gpuPreferred = false;
-                                TraverseSensors(hw, ref cpuTemp, ref gpuTemp, ref cpuPreferred, ref gpuPreferred);
-                            }
-                        }
-                        catch { }
-                        
-                        // Cache the results; preserve previous cached value if current poll returned null
+                        // Clear cached values so overlay shows "N/A" while waiting
                         lock (cacheLock)
                         {
-                            if (cpuTemp.HasValue)
-                                cachedCpuTemp = cpuTemp;
-                            // else keep previous cachedCpuTemp
-
-                            if (gpuTemp.HasValue)
-                                cachedGpuTemp = gpuTemp;
-                            // else keep previous cachedGpuTemp
+                            cachedCpuTemp = null;
+                            cachedGpuTemp = null;
                         }
+
+                        if (!initialWaitDone)
+                        {
+                            // First time: wait longer so HWiNFO64 can boot up
+                            Thread.Sleep(LaunchWaitMs);
+                            initialWaitDone = true;
+                        }
+                        else
+                        {
+                            // Subsequent waits: shorter retry interval
+                            Thread.Sleep(RetryIntervalMs);
+                        }
+
+                        continue;
                     }
-                    
-                    // Poll every 500ms - balance between responsiveness and CPU usage
-                    // Background thread handles fullscreen apps, so 500ms is sufficient
-                    Thread.Sleep(500);
+
+                    initialWaitDone = true;
+
+                    // Read temperatures from shared memory
+                    var reading = HWiNFOReader.ReadTemperatures(wantCpu, wantGpu);
+
+                    lock (cacheLock)
+                    {
+                        cachedCpuTemp = reading.CpuTemp;
+                        cachedGpuTemp = reading.GpuTemp;
+                    }
                 }
                 catch { }
+
+                Thread.Sleep(PollIntervalMs);
             }
         }
-        
-        // Copy of TraverseHardware logic from OverlayForm
-        private static void TraverseSensors(IHardware hardware, ref float? cpuMax, ref float? gpuMax, ref bool cpuPreferred, ref bool gpuPreferred)
+
+        // ── Helpers ──────────────────────────────────────────────────────────
+
+        private static void WriteLog(string msg)
         {
             try
             {
-                List<float>? cpuCoreTemps = null;
-                float? cpuPackage = null;
-                float? cpuTdie = null;
-                float? cpuCCD = null;
-                
-                foreach (var sensor in hardware.Sensors)
-                {
-                    if (!sensor.Value.HasValue) continue;
-                    if (sensor.SensorType != SensorType.Temperature) continue;
-                    var v = sensor.Value.GetValueOrDefault();
-                    var sname = (sensor.Name ?? string.Empty).ToLowerInvariant();
-
-                    // CPU: prioritize accuracy and real die temperature
-                    if (hardware.HardwareType == HardwareType.Cpu)
-                    {
-                        // AMD: Tdie (real die temp, no offset) - highest priority for Ryzen
-                        if (sname.Contains("tdie"))
-                        {
-                            cpuTdie = v;
-                        }
-                        // Intel: CPU Package is official TDP sensor - most accurate
-                        // AMD: Package/Tctl also reliable when Tdie not available
-                        else if (sname.Contains("package"))
-                        {
-                            cpuPackage = v;
-                        }
-                        // AMD: Tctl (control temperature, may have offset) - only if Package not found
-                        else if (sname.Contains("tctl") && !cpuPackage.HasValue)
-                        {
-                            cpuPackage = v;
-                        }
-                        // AMD: CCD temperature (chiplet die, accurate for multi-chiplet Ryzen)
-                        else if (sname.Contains("ccd") && sname.Contains("temp"))
-                        {
-                            if (!cpuCCD.HasValue || v > cpuCCD.Value)
-                                cpuCCD = v;
-                        }
-                        // Collect individual core temps
-                        else if ((sname.Contains("core") || sname.Contains("cpu core")) && !sname.Contains("average"))
-                        {
-                            cpuCoreTemps ??= new List<float>();
-                            cpuCoreTemps.Add(v);
-                        }
-                    }
-                    // GPU: Core temp
-                    else if (hardware.HardwareType == HardwareType.GpuAmd ||
-                             hardware.HardwareType == HardwareType.GpuNvidia ||
-                             hardware.HardwareType == HardwareType.GpuIntel)
-                    {
-                        if (sname.Contains("core") || sname.Contains("edge") || sname.Contains("gpu temperature"))
-                        {
-                            if (!gpuPreferred || !gpuMax.HasValue || v > gpuMax.Value)
-                            {
-                                gpuMax = v;
-                                gpuPreferred = true;
-                            }
-                        }
-                        else if (!gpuPreferred)
-                        {
-                            if (!gpuMax.HasValue || v > gpuMax.Value) gpuMax = v;
-                        }
-                    }
-                }
-
-                foreach (var sub in hardware.SubHardware)
-                {
-                    TraverseSensors(sub, ref cpuMax, ref gpuMax, ref cpuPreferred, ref gpuPreferred);
-                }
-
-                // CPU: Apply priority logic
-                // Priority order for most accurate temperature:
-                // 1. AMD Tdie (real die temperature, no offset)
-                // 2. Intel/AMD Package (official TDP sensor)
-                // 3. AMD CCD (chiplet die for Ryzen)
-                // 4. Individual cores max (last resort)
-                if (hardware.HardwareType == HardwareType.Cpu && !cpuPreferred)
-                {
-                    if (cpuTdie.HasValue)
-                    {
-                        // AMD Ryzen: Tdie is most accurate
-                        cpuMax = cpuTdie;
-                        cpuPreferred = true;
-                    }
-                    else if (cpuPackage.HasValue)
-                    {
-                        // Intel: CPU Package is official TDP sensor (most accurate)
-                        // AMD: Package is reliable when Tdie unavailable
-                        cpuMax = cpuPackage;
-                        cpuPreferred = true;
-                    }
-                    else if (cpuCCD.HasValue)
-                    {
-                        // AMD Ryzen: CCD temp for multi-chiplet CPUs
-                        cpuMax = cpuCCD;
-                        cpuPreferred = true;
-                    }
-                    else if (cpuCoreTemps != null && cpuCoreTemps.Count > 0)
-                    {
-                        // Last resort: Use max core temperature
-                        // Intel: Individual cores are accurate
-                        // AMD: Fallback if no die/package temp available
-                        cpuMax = cpuCoreTemps.Max();
-                        cpuPreferred = true;
-                    }
-                }
+                System.IO.File.WriteAllText(
+                    System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sensor_debug.log"),
+                    msg + "\n");
             }
             catch { }
         }

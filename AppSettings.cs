@@ -29,12 +29,14 @@ namespace CpuTempApp
                 {
                     _overlayX = (int)(key.GetValue("OverlayX") ?? -1);
                     _overlayY = (int)(key.GetValue("OverlayY") ?? 0);
+                    _showCpu = Convert.ToBoolean(key.GetValue("ShowCpu") ?? _showCpu);
+                    _showGpu = Convert.ToBoolean(key.GetValue("ShowGpu") ?? _showGpu);
                     
                     // Load text color (stored as ARGB int)
                     int colorArgb = (int)(key.GetValue("TextColorArgb") ?? Color.Cyan.ToArgb());
                     _textColor = Color.FromArgb(colorArgb);
                     
-                    System.Diagnostics.Debug.WriteLine($"[AppSettings] Loaded from Registry: X={_overlayX}, Y={_overlayY}, Color={_textColor}");
+                    System.Diagnostics.Debug.WriteLine($"[AppSettings] Loaded from Registry: X={_overlayX}, Y={_overlayY}, Color={_textColor}, ShowCpu={_showCpu}, ShowGpu={_showGpu}");
                     key.Close();
                 }
                 else
@@ -69,8 +71,10 @@ namespace CpuTempApp
                     key.SetValue("OverlayX", _overlayX);
                     key.SetValue("OverlayY", _overlayY);
                     key.SetValue("TextColorArgb", _textColor.ToArgb());
+                    key.SetValue("ShowCpu", _showCpu);
+                    key.SetValue("ShowGpu", _showGpu);
                     key.Flush();  // Force flush to Registry
-                    System.Diagnostics.Debug.WriteLine($"[AppSettings] Saved to Registry: X={_overlayX}, Y={_overlayY}, Color={_textColor}");
+                    System.Diagnostics.Debug.WriteLine($"[AppSettings] Saved to Registry: X={_overlayX}, Y={_overlayY}, Color={_textColor}, ShowCpu={_showCpu}, ShowGpu={_showGpu}");
                     key.Close();
                 }
             }
@@ -88,6 +92,7 @@ namespace CpuTempApp
             {
                 if (_showCpu == value) return;
                 _showCpu = value;
+                SaveSettings();
                 RaiseSettingsChanged();
             }
         }
@@ -99,6 +104,7 @@ namespace CpuTempApp
             {
                 if (_showGpu == value) return;
                 _showGpu = value;
+                SaveSettings();
                 RaiseSettingsChanged();
             }
         }

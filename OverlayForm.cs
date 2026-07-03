@@ -74,6 +74,8 @@ namespace CpuTempApp
         private System.Threading.Timer colorResetTimer;
             // Used to track how long CPU temp is missing
             private DateTime? lastCpuNullTime = null;
+            // Used to track how long GPU temp is missing
+            private DateTime? lastGpuNullTime = null;
         private DateTime lastColorChangeTime = DateTime.MinValue;
         private const int ColorFeedbackDurationMs = 150;
 
@@ -431,6 +433,25 @@ namespace CpuTempApp
                 else
                 {
                     displayGpu = avgGpu;
+                }
+                lastGpuNullTime = null; // reset null timer
+            }
+            else
+            {
+                // If GPU temp is missing (e.g. GPU went to sleep), keep last value for up to 2 seconds before showing N/A
+                if (lastGpu.HasValue)
+                {
+                    if (lastGpuNullTime == null)
+                        lastGpuNullTime = DateTime.Now;
+                    if ((DateTime.Now - lastGpuNullTime.Value).TotalSeconds < 2)
+                    {
+                        displayGpu = lastGpu;
+                    }
+                    else
+                    {
+                        displayGpu = null;
+                        System.Diagnostics.Debug.WriteLine($"[OverlayForm] GPU temp missing for over 2s at {DateTime.Now}");
+                    }
                 }
             }
 

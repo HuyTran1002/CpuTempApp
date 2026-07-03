@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -74,6 +75,58 @@ namespace CpuTempApp
             infoPanel.Controls.Add(infoText);
             Controls.Add(infoPanel);
 
+            // ── HWiNFO64 requirement check ──────────────────────────────
+            bool hwInfoInstalled = HWiNFOReader.IsSharedMemoryLive() ||
+                                   !string.IsNullOrEmpty(GetPrivateHWiNFOPath());
+
+            var hwPanel = new Panel
+            {
+                BackColor = hwInfoInstalled
+                    ? Color.FromArgb(15, 40, 20)   // Dark green — OK
+                    : Color.FromArgb(40, 15, 15),  // Dark red — missing
+                Height = 48,
+                Dock = DockStyle.Top,
+                Padding = new Padding(16, 0, 16, 0),
+            };
+
+            var hwLabel = new Label
+            {
+                Text = hwInfoInstalled
+                    ? "✅  HWiNFO64 detected — sensor data will be accurate"
+                    : "⚠️  HWiNFO64 not found — please install it for accurate temperatures",
+                AutoSize = false,
+                Font = new Font("Segoe UI", 9, FontStyle.Regular),
+                ForeColor = hwInfoInstalled ? Color.FromArgb(100, 255, 150) : Color.FromArgb(255, 180, 80),
+                BackColor = Color.Transparent,
+                Width = hwInfoInstalled ? 400 : 310,
+                Height = 48,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Location = new Point(0, 0),
+            };
+            hwPanel.Controls.Add(hwLabel);
+
+            if (!hwInfoInstalled)
+            {
+                var btnDownload = new Button
+                {
+                    Text = "Download HWiNFO64 ",
+                    Width = 160,
+                    Height = 30,
+                    BackColor = Color.FromArgb(200, 120, 0),
+                    ForeColor = Color.White,
+                    Font = new Font("Segoe UI", 9, FontStyle.Bold),
+                    FlatStyle = FlatStyle.Flat,
+                    Cursor = Cursors.Hand,
+                    Location = new Point(316, 9),
+                };
+                btnDownload.FlatAppearance.BorderSize = 0;
+                btnDownload.Click += (s, e) =>
+                    Process.Start(new ProcessStartInfo("https://www.hwinfo.com/download/") { UseShellExecute = true });
+                hwPanel.Controls.Add(btnDownload);
+            }
+
+            Controls.Add(hwPanel);
+
             // Spacer
             var spacer = new Panel { Height = 20, Dock = DockStyle.Top, BackColor = ColorBackground };
             Controls.Add(spacer);
@@ -99,6 +152,17 @@ namespace CpuTempApp
             Controls.Add(btnContinue);
 
             AcceptButton = btnContinue;
+        }
+
+        /// Thin wrapper — lets WelcomeForm ask HWiNFOReader if the exe is findable
+        /// without exposing internal API surface.
+        private static string GetPrivateHWiNFOPath()
+        {
+            // We call EnsureRunning() in a no-op way just to trigger discovery;
+            // status is set as a side effect.
+            // Instead, use the public status after a quick sync check:
+            HWiNFOReader.EnsureRunning();
+            return HWiNFOReader.Status != HWiNFOReader.HWiNFOStatus.NotInstalled ? "found" : null;
         }
 
         protected override void OnPaint(PaintEventArgs e)

@@ -1,6 +1,6 @@
 [Setup]
 AppName=CPU Temp Monitor
-AppVersion=1.1.6
+AppVersion=2.0.0
 AppPublisher=CPU Temp
 AppPublisherURL=https://github.com
 AppSupportURL=https://github.com
@@ -38,17 +38,18 @@ Name: "startup"; Description: "Start CPU Temp Monitor at Windows startup"; Group
 
 [Files]
 ; Main application executable
-Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net7.0-windows\CpuTempApp.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: app
-Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net7.0-windows\CpuTempApp.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: app
+Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net8.0-windows\CpuTempApp.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: app
+Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net8.0-windows\CpuTempApp.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: app
+Source: "D:\Downloads\hwi_849_6005\HWiNFO64.exe"; DestDir: "{app}\HWiNFO64"; Flags: ignoreversion; Components: app
 
 ; Runtime config and dependencies
-Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net7.0-windows\*.json"; DestDir: "{app}"; Flags: ignoreversion; Components: app
-Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net7.0-windows\*.runtimeconfig.json"; DestDir: "{app}"; Flags: ignoreversion; Components: app
-Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net7.0-windows\*.deps.json"; DestDir: "{app}"; Flags: ignoreversion; Components: app
+Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net8.0-windows\*.json"; DestDir: "{app}"; Flags: ignoreversion; Components: app
+Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net8.0-windows\*.runtimeconfig.json"; DestDir: "{app}"; Flags: ignoreversion; Components: app
+Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net8.0-windows\*.deps.json"; DestDir: "{app}"; Flags: ignoreversion; Components: app
 
 ; All DLL files (framework and dependencies)
-Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net7.0-windows\*.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: app
-Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net7.0-windows\runtimes\*"; DestDir: "{app}\runtimes"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: app
+Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net8.0-windows\*.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: app
+Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net8.0-windows\runtimes\*"; DestDir: "{app}\runtimes"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: app
 
 ; Application icon
 Source: "D:\Program Files\Code\CpuTempApp\temperature_icon_175973.ico"; DestDir: "{app}"; Flags: ignoreversion; Components: app
@@ -77,7 +78,7 @@ begin
   Result := False;
   
   // Check C:\Program Files first
-  DotNetPath := 'C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App\7.0.20';
+  DotNetPath := 'C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App\8.0.22';
   
   if DirExists(DotNetPath) then
   begin
@@ -86,32 +87,41 @@ begin
   end;
   
   // Try Program Files (x86) for 32-bit
-  DotNetPath := 'C:\Program Files (x86)\dotnet\shared\Microsoft.WindowsDesktop.App\7.0.20';
+  DotNetPath := 'C:\Program Files (x86)\dotnet\shared\Microsoft.WindowsDesktop.App\8.0.22';
   if DirExists(DotNetPath) then
   begin
     Result := True;
     Exit;
   end;
   
-  // Last resort: check any 7.x version in Program Files
+  // Last resort: check any 8.x version in Program Files
   DotNetPath := 'C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App';
-  if DirExists(DotNetPath + '\7.0.0') or 
-     DirExists(DotNetPath + '\7.0.1') or 
-     DirExists(DotNetPath + '\7.0.2') or 
-     DirExists(DotNetPath + '\7.0.3') or 
-     DirExists(DotNetPath + '\7.0.4') or 
-     DirExists(DotNetPath + '\7.0.5') or 
-     DirExists(DotNetPath + '\7.0.10') or 
-     DirExists(DotNetPath + '\7.0.11') or 
-     DirExists(DotNetPath + '\7.0.12') or 
-     DirExists(DotNetPath + '\7.0.13') or 
-     DirExists(DotNetPath + '\7.0.14') or 
-     DirExists(DotNetPath + '\7.0.15') or 
-     DirExists(DotNetPath + '\7.0.16') or 
-     DirExists(DotNetPath + '\7.0.17') or 
-     DirExists(DotNetPath + '\7.0.18') or 
-     DirExists(DotNetPath + '\7.0.19') or 
-     DirExists(DotNetPath + '\7.0.20') then
+  if DirExists(DotNetPath + '\8.0.0') or 
+     DirExists(DotNetPath + '\8.0.1') or 
+     DirExists(DotNetPath + '\8.0.2') or 
+     DirExists(DotNetPath + '\8.0.3') or 
+     DirExists(DotNetPath + '\8.0.4') or 
+     DirExists(DotNetPath + '\8.0.5') or 
+     DirExists(DotNetPath + '\8.0.6') or 
+     DirExists(DotNetPath + '\8.0.7') or 
+     DirExists(DotNetPath + '\8.0.8') or 
+     DirExists(DotNetPath + '\8.0.9') or 
+     DirExists(DotNetPath + '\8.0.10') or 
+     DirExists(DotNetPath + '\8.0.11') or 
+     DirExists(DotNetPath + '\8.0.12') or 
+     DirExists(DotNetPath + '\8.0.13') or 
+     DirExists(DotNetPath + '\8.0.14') or 
+     DirExists(DotNetPath + '\8.0.15') or 
+     DirExists(DotNetPath + '\8.0.16') or 
+     DirExists(DotNetPath + '\8.0.17') or 
+     DirExists(DotNetPath + '\8.0.18') or 
+     DirExists(DotNetPath + '\8.0.19') or 
+     DirExists(DotNetPath + '\8.0.20') or 
+     DirExists(DotNetPath + '\8.0.21') or 
+     DirExists(DotNetPath + '\8.0.22') or 
+     DirExists(DotNetPath + '\8.0.23') or 
+     DirExists(DotNetPath + '\8.0.24') or 
+     DirExists(DotNetPath + '\8.0.25') then
   begin
     Result := True;
   end;
@@ -202,11 +212,11 @@ begin
   // Kiểm tra .NET trước
   if not IsDotNetInstalled() then
   begin
-    MsgBox('.NET 7.0 Desktop Runtime chưa được cài đặt trên máy tính này.' + #13#10 + 
+    MsgBox('.NET 8.0 Desktop Runtime chưa được cài đặt trên máy tính này.' + #13#10 + 
            'Bạn cần cài đặt nó trước khi tiếp tục.' + #13#10#13#10 + 
-           'Vui lòng tải và cài đặt .NET 7.0 Desktop Runtime, sau đó chạy lại bộ cài này.', 
+           'Vui lòng tải và cài đặt .NET 8.0 Desktop Runtime, sau đó chạy lại bộ cài này.', 
            mbError, MB_OK);
-    ShellExec('open', 'https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/runtime-desktop-7.0.20-windows-x64-installer', '', '', SW_SHOW, ewNoWait, ErrorCode);
+    ShellExec('open', 'https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/runtime-desktop-8.0.8-windows-x64-installer', '', '', SW_SHOW, ewNoWait, ErrorCode);
     Abort();
   end;
   
