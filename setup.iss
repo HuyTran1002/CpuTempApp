@@ -40,7 +40,7 @@ Name: "startup"; Description: "Start CPU Temp Monitor at Windows startup"; Group
 ; Main application executable
 Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net8.0-windows\CpuTempApp.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: app
 Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net8.0-windows\CpuTempApp.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: app
-Source: "D:\Downloads\hwi_849_6005\HWiNFO64.exe"; DestDir: "{app}\HWiNFO64"; Flags: ignoreversion; Components: app
+Source: "D:\Program Files\Code\CpuTempApp\HWiNFO64.exe"; DestDir: "{app}\HWiNFO64"; Flags: ignoreversion; Components: app
 
 ; Runtime config and dependencies
 Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net8.0-windows\*.json"; DestDir: "{app}"; Flags: ignoreversion; Components: app

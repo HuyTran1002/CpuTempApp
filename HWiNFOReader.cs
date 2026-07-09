@@ -465,7 +465,7 @@ namespace CpuTempApp
 
                     // Merge or create the INI file with all required settings
                     string existing = File.Exists(iniPath) ? File.ReadAllText(iniPath) : "";
-                    if (!existing.Contains("SHMEMEnabled") || !existing.Contains("SensorsOnly"))
+                    if (!existing.Contains("SHMEMEnabled") || !existing.Contains("SensorsOnly") || !existing.Contains("UpdateCheck=0"))
                     {
                         existing = "[Settings]\r\nSHMEMEnabled=1\r\nSensorsOnly=1\r\nMinimizeOnStartup=1\r\nMinimizeSensors=1\r\nShowWelcomeAndProgress=0\r\nUpdateCheck=0\r\nBetaCheck=0\r\n";
                         File.WriteAllText(iniPath, existing);
