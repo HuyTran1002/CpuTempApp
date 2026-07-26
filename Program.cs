@@ -7,7 +7,7 @@ namespace CpuTempApp
     static class Program
     {
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
             bool createdNew;
             using (var mutex = new System.Threading.Mutex(true, "CpuTempApp_SingleInstance_Mutex", out createdNew))
@@ -21,10 +21,31 @@ namespace CpuTempApp
 
                 ApplicationConfiguration.Initialize();
 
-                // show welcome and options if you want (same as before)
-                using (var welcome = new WelcomeFormModern())
+                // Check for autostart command line flag
+                bool isAutostart = false;
+                if (args != null)
                 {
-                    if (welcome.ShowDialog() != DialogResult.OK) return;
+                    foreach (var arg in args)
+                    {
+                        if (arg.Equals("/autostart", StringComparison.OrdinalIgnoreCase) ||
+                            arg.Equals("/startup", StringComparison.OrdinalIgnoreCase) ||
+                            arg.Equals("--autostart", StringComparison.OrdinalIgnoreCase) ||
+                            arg.Equals("-autostart", StringComparison.OrdinalIgnoreCase))
+                        {
+                            isAutostart = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Show welcome screen ONLY on manual first run
+                if (AppSettings.IsFirstRun && !isAutostart)
+                {
+                    using (var welcome = new WelcomeFormModern())
+                    {
+                        if (welcome.ShowDialog() != DialogResult.OK) return;
+                    }
+                    AppSettings.IsFirstRun = false;
                 }
 
                 // Start independent sensor service (before creating UI)
@@ -57,8 +78,8 @@ namespace CpuTempApp
 
                 try
                 {
-                    // run ControlForm as main window; it will create the overlay and tray
-                    Application.Run(new ControlFormModern());
+                    // run ControlForm as main window; pass isAutostart to hide UI on Windows boot
+                    Application.Run(new ControlFormModern(isAutostart));
                 }
                 finally
                 {

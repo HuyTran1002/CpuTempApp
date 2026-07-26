@@ -1,6 +1,6 @@
 [Setup]
 AppName=CPU Temp Monitor
-AppVersion=2.0.0
+AppVersion=2.0.1
 AppPublisher=CPU Temp
 AppPublisherURL=https://github.com
 AppSupportURL=https://github.com
@@ -61,10 +61,11 @@ Name: "{commondesktop}\CPU Temp Monitor"; Filename: "{app}\CpuTempApp.exe"; Icon
 Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\CPU Temp Monitor"; Filename: "{app}\CpuTempApp.exe"; IconFilename: "{app}\temperature_icon_175973.ico"; IconIndex: 0; Tasks: quicklaunchicon
 
 [Run]
+Filename: "schtasks.exe"; Parameters: "/create /tn ""CpuTempMonitor"" /tr """"{app}\CpuTempApp.exe"""" /autostart"" /sc onlogon /rl highest /f"; Tasks: startup; Flags: runhidden
 Filename: "{app}\CpuTempApp.exe"; Description: "{cm:LaunchProgram,CPU Temp Monitor}"; Flags: nowait postinstall skipifsilent shellexec runasoriginaluser
 
-[Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "CpuTempMonitor"; ValueData: "{app}\CpuTempApp.exe"; Flags: uninsdeletevalue; Tasks: startup
+[UninstallRun]
+Filename: "schtasks.exe"; Parameters: "/delete /tn ""CpuTempMonitor"" /f"; Flags: runhidden; RunOnceId: "DelCpuTempMonitorTask"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"

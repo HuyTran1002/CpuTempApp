@@ -9,6 +9,7 @@ namespace CpuTempApp
     {
         private CheckBox chkCpu;
         private CheckBox chkGpu;
+        private CheckBox chkStartWithWindows;
         private Button btnApply;
         private Button btnCancel;
         private Button btnColorPicker;
@@ -19,6 +20,7 @@ namespace CpuTempApp
         private OverlayForm overlay;
         private bool allowClose = false;
         private bool hasUnlockedPosition = false;  // Track if position has been unlocked
+        private bool isAutostart = false;
 
         private readonly Color ColorBackground = Color.FromArgb(10, 10, 20);
         private readonly Color ColorPanel = Color.FromArgb(20, 20, 35);
@@ -27,16 +29,26 @@ namespace CpuTempApp
         private readonly Color ColorButton = Color.FromArgb(0, 150, 255);
         private readonly Color ColorButtonHover = Color.FromArgb(0, 200, 255);
 
-        public ControlFormModern()
+        public ControlFormModern() : this(false) { }
+
+        public ControlFormModern(bool isAutostart)
         {
+            this.isAutostart = isAutostart;
             Text = "CPU Temp Monitor - Settings";
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(400, 280);
+            ClientSize = new Size(400, 315);
             FormBorderStyle = FormBorderStyle.None;
             MaximizeBox = false;
             MinimizeBox = false;
             BackColor = ColorBackground;
             DoubleBuffered = true;
+
+            if (isAutostart)
+            {
+                WindowState = FormWindowState.Minimized;
+                ShowInTaskbar = false;
+                Opacity = 0;
+            }
 
             // Close Button (X)
             var btnClose = new Button
@@ -110,7 +122,7 @@ namespace CpuTempApp
             {
                 BackColor = ColorPanel,
                 Location = new Point(15, 45),
-                Size = new Size(370, 130),
+                Size = new Size(370, 165),
                 Padding = new Padding(18, 15, 18, 15)
             };
 
@@ -140,11 +152,24 @@ namespace CpuTempApp
                 Appearance = Appearance.Normal
             };
 
+            // Start with Windows Checkbox
+            chkStartWithWindows = new CheckBox
+            {
+                Text = "Start CPU Temp Monitor with Windows",
+                Location = new Point(18, 68),
+                Size = new Size(330, 22),
+                Font = new Font("Segoe UI", 10, FontStyle.Regular),
+                ForeColor = ColorText,
+                BackColor = ColorPanel,
+                AutoSize = false,
+                Appearance = Appearance.Normal
+            };
+
             // Color Section - Horizontal Layout
             var colorLabel = new Label
             {
                 Text = "Color:",
-                Location = new Point(18, 72),
+                Location = new Point(18, 102),
                 Size = new Size(50, 28),
                 Font = new Font("Segoe UI", 9, FontStyle.Regular),
                 ForeColor = ColorText,
@@ -155,7 +180,7 @@ namespace CpuTempApp
             btnColorPicker = new Button
             {
                 Text = "Pick",
-                Location = new Point(72, 72),
+                Location = new Point(72, 102),
                 Size = new Size(60, 28),
                 Font = new Font("Segoe UI", 9, FontStyle.Bold),
                 BackColor = ColorButton,
@@ -168,7 +193,7 @@ namespace CpuTempApp
             pnlColorPreview = new Panel
             {
                 BackColor = AppSettings.TextColor,
-                Location = new Point(138, 72),
+                Location = new Point(138, 102),
                 Size = new Size(60, 28),
                 BorderStyle = BorderStyle.FixedSingle
             };
@@ -177,7 +202,7 @@ namespace CpuTempApp
             btnEditPosition = new Button
             {
                 Text = "Edit Position",
-                Location = new Point(240, 72),
+                Location = new Point(240, 102),
                 Size = new Size(108, 28),
                 Font = new Font("Segoe UI", 9, FontStyle.Bold),
                 BackColor = ColorButton,
@@ -189,6 +214,7 @@ namespace CpuTempApp
 
             mainPanel.Controls.Add(chkCpu);
             mainPanel.Controls.Add(chkGpu);
+            mainPanel.Controls.Add(chkStartWithWindows);
             mainPanel.Controls.Add(colorLabel);
             mainPanel.Controls.Add(btnColorPicker);
             mainPanel.Controls.Add(pnlColorPreview);
@@ -199,7 +225,7 @@ namespace CpuTempApp
             var buttonPanel = new Panel
             {
                 BackColor = ColorBackground,
-                Location = new Point(0, 190),
+                Location = new Point(0, 225),
                 Size = new Size(ClientSize.Width, 80),
                 Padding = new Padding(0, 12, 0, 12)
             };
@@ -239,6 +265,7 @@ namespace CpuTempApp
             // Initialize from AppSettings
             chkCpu.Checked = AppSettings.ShowCpu;
             chkGpu.Checked = AppSettings.ShowGpu;
+            chkStartWithWindows.Checked = AppSettings.StartWithWindows;
 
             // Color picker click
             btnColorPicker.Click += (s, e) =>
@@ -278,9 +305,10 @@ namespace CpuTempApp
 
             btnApply.Click += (s, e) =>
             {
-                System.Diagnostics.Debug.WriteLine($"[ControlForm] APPLY clicked: ShowCpu={chkCpu.Checked}, ShowGpu={chkGpu.Checked}");
+                System.Diagnostics.Debug.WriteLine($"[ControlForm] APPLY clicked: ShowCpu={chkCpu.Checked}, ShowGpu={chkGpu.Checked}, StartWithWindows={chkStartWithWindows.Checked}");
                 AppSettings.ShowCpu = chkCpu.Checked;
                 AppSettings.ShowGpu = chkGpu.Checked;
+                AppSettings.StartWithWindows = chkStartWithWindows.Checked;
                 System.Diagnostics.Debug.WriteLine($"[ControlForm] After APPLY: AppSettings.ShowCpu={AppSettings.ShowCpu}, AppSettings.ShowGpu={AppSettings.ShowGpu}");
                 if (this.Modal) Close();
             };
@@ -322,7 +350,7 @@ namespace CpuTempApp
                 if (e.CloseReason == CloseReason.UserClosing && !allowClose)
                 {
                     e.Cancel = true;
-                    this.Hide();
+                    HideToTray();
                 }
             };
             // Hide instead of exit on X button
@@ -333,8 +361,14 @@ namespace CpuTempApp
                     MessageBox.Show("Please lock the position first before hiding the app.", "Position Not Locked", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
-                this.Hide();
+                HideToTray();
             };
+        }
+
+        private void HideToTray()
+        {
+            this.ShowInTaskbar = false;
+            this.Hide();
         }
 
         private void CreateTrayIcon()
@@ -367,9 +401,11 @@ namespace CpuTempApp
 
         private void ShowSettings()
         {
+            this.ShowInTaskbar = true;
             this.Show();
             this.WindowState = FormWindowState.Normal;
             this.BringToFront();
+            this.Activate();
         }
 
         private void ExitApplication()
@@ -391,7 +427,7 @@ namespace CpuTempApp
             if (!allowClose && e.CloseReason == CloseReason.UserClosing)
             {
                 e.Cancel = true;
-                this.Hide();
+                HideToTray();
             }
             else
             {
@@ -410,6 +446,18 @@ namespace CpuTempApp
                 {
                     trayMenu.Dispose();
                 }
+            }
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            if (isAutostart)
+            {
+                HideToTray();
+                this.Opacity = 1.0;
+                this.WindowState = FormWindowState.Normal;
+                isAutostart = false; // Reset so subsequent double-clicks show the settings window
             }
         }
 
