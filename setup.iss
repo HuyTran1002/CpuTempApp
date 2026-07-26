@@ -232,8 +232,9 @@ begin
               'Nhấn "Không" để hủy cài đặt.', 
               mbConfirmation, MB_YESNO) = IDYES) then
     begin
-      // BƯỚC 1: Đóng app nếu đang chạy
+      // BƯỚC 1: Đóng app và HWiNFO64 nếu đang chạy
       Exec('taskkill.exe', '/F /IM CpuTempApp.exe', '', SW_HIDE, ewWaitUntilTerminated, UninstallResult);
+      Exec('taskkill.exe', '/F /IM HWiNFO64.exe', '', SW_HIDE, ewWaitUntilTerminated, UninstallResult);
       Sleep(1000); // Đợi 1 giây
       
       // BƯỚC 2: Lấy uninstall string từ registry
