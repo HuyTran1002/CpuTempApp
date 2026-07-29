@@ -247,11 +247,8 @@ namespace CpuTempApp
             // Color reset timer - runs every 50ms to reset colors when needed
             colorResetTimer = new System.Threading.Timer(ColorResetCallback, null, 50, 50);
 
-                // Timer kiểm tra label bị đơ
-                labelCheckTimer = new System.Threading.Timer(LabelFreezeCheckCallback, null, 2000, 2000);
-
-                // Timer kiểm tra label bị đơ
-                labelCheckTimer = new System.Threading.Timer(LabelFreezeCheckCallback, null, 2000, 2000);
+            // Timer kiểm tra label bị đơ
+            labelCheckTimer = new System.Threading.Timer(LabelFreezeCheckCallback, null, 2000, 2000);
         }
 
         
@@ -364,28 +361,12 @@ namespace CpuTempApp
             float? displayCpu = null;
             float? displayGpu = null;
 
-            // CPU: Apply moving average smoothing with tolerant fallback
+            // CPU: Apply moving average smoothing
             if (cpuMax.HasValue)
             {
                 cpuBuffer.Enqueue(cpuMax.Value);
                 if (cpuBuffer.Count > 3) cpuBuffer.Dequeue();
-                var avgCpu = cpuBuffer.Average();
-                if (lastCpu.HasValue)
-                {
-                    float diff = Math.Abs(avgCpu - lastCpu.Value);
-                    if (diff > SpikeThreshold)
-                    {
-                        displayCpu = lastCpu;
-                    }
-                    else
-                    {
-                        displayCpu = avgCpu;
-                    }
-                }
-                else
-                {
-                    displayCpu = avgCpu;
-                }
+                displayCpu = cpuBuffer.Average();
                 lastCpuNullTime = null; // reset null timer
             }
             else
@@ -402,7 +383,7 @@ namespace CpuTempApp
                     else
                     {
                         displayCpu = null;
-                        // Optionally log for diagnostics
+                        cpuBuffer.Clear();
                         System.Diagnostics.Debug.WriteLine($"[OverlayForm] CPU temp missing for over 2s at {DateTime.Now}");
                     }
                 }
@@ -413,27 +394,7 @@ namespace CpuTempApp
             {
                 gpuBuffer.Enqueue(gpuMax.Value);
                 if (gpuBuffer.Count > 3) gpuBuffer.Dequeue();
-
-                // Use the buffered average for spike detection to avoid reacting to single noisy samples
-                var avgGpu = gpuBuffer.Average();
-                if (lastGpu.HasValue)
-                {
-                    float diff = Math.Abs(avgGpu - lastGpu.Value);
-                    if (diff > SpikeThreshold)
-                    {
-                        // Spike detected, keep last displayed value
-                        displayGpu = lastGpu;
-                    }
-                    else
-                    {
-                        // Normal fluctuation, use buffered average
-                        displayGpu = avgGpu;
-                    }
-                }
-                else
-                {
-                    displayGpu = avgGpu;
-                }
+                displayGpu = gpuBuffer.Average();
                 lastGpuNullTime = null; // reset null timer
             }
             else
@@ -450,6 +411,7 @@ namespace CpuTempApp
                     else
                     {
                         displayGpu = null;
+                        gpuBuffer.Clear();
                         System.Diagnostics.Debug.WriteLine($"[OverlayForm] GPU temp missing for over 2s at {DateTime.Now}");
                     }
                 }

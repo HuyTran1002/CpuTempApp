@@ -401,11 +401,38 @@ namespace CpuTempApp
 
         private void ShowSettings()
         {
-            this.ShowInTaskbar = true;
-            this.Show();
-            this.WindowState = FormWindowState.Normal;
-            this.BringToFront();
-            this.Activate();
+            try
+            {
+                if (this.InvokeRequired)
+                {
+                    this.BeginInvoke((Action)ShowSettings);
+                    return;
+                }
+
+                this.Opacity = 1.0;
+                this.ShowInTaskbar = true;
+                this.WindowState = FormWindowState.Normal;
+                this.Show();
+                this.CenterToScreen();
+
+                // Temporarily bring to top above OverlayForm and other windows
+                this.TopMost = true;
+                this.BringToFront();
+                this.Activate();
+
+                var t = new System.Windows.Forms.Timer { Interval = 200 };
+                t.Tick += (s, e) =>
+                {
+                    t.Stop();
+                    t.Dispose();
+                    if (!this.IsDisposed)
+                    {
+                        this.TopMost = false;
+                    }
+                };
+                t.Start();
+            }
+            catch { }
         }
 
         private void ExitApplication()

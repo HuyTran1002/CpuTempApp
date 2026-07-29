@@ -210,9 +210,11 @@ namespace CpuTempApp
                     this.BeginInvoke((Action)ShowFromTray);
                     return;
                 }
+                this.Opacity = 1.0;
                 this.Show();
                 this.WindowState = FormWindowState.Normal;
                 this.ShowInTaskbar = true;
+                this.CenterToScreen();
                 // bring to front and ensure it's above overlay
                 this.TopMost = true;
                 this.Activate();
