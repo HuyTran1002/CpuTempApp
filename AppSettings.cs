@@ -8,8 +8,8 @@ namespace CpuTempApp
     public static class AppSettings
     {
         private static readonly string RegistryPath = @"HKEY_CURRENT_USER\Software\CpuTempApp";
-        private static bool _showCpu = true;
-        private static bool _showGpu = true;
+        private static bool _showCpu = false;
+        private static bool _showGpu = false;
         private static Color _textColor = Color.Cyan;  // Default color is cyan
         private static int _overlayX = -1;  // -1 means center (default)
         private static int _overlayY = 0;
@@ -30,8 +30,8 @@ namespace CpuTempApp
                 {
                     _overlayX = (int)(key.GetValue("OverlayX") ?? -1);
                     _overlayY = (int)(key.GetValue("OverlayY") ?? 0);
-                    _showCpu = Convert.ToBoolean(key.GetValue("ShowCpu") ?? true);
-                    _showGpu = Convert.ToBoolean(key.GetValue("ShowGpu") ?? true);
+                    _showCpu = Convert.ToBoolean(key.GetValue("ShowCpu") ?? false);
+                    _showGpu = Convert.ToBoolean(key.GetValue("ShowGpu") ?? false);
                     _isFirstRun = Convert.ToInt32(key.GetValue("FirstRun") ?? 1) == 1;
                     
                     // Load text color (stored as ARGB int)
@@ -53,8 +53,8 @@ namespace CpuTempApp
                 _overlayX = -1;
                 _overlayY = 0;
                 _textColor = Color.Cyan;
-                _showCpu = true;
-                _showGpu = true;
+                _showCpu = false;
+                _showGpu = false;
                 _isFirstRun = true;
             }
         }
