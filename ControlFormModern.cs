@@ -34,7 +34,7 @@ namespace CpuTempApp
         public ControlFormModern(bool isAutostart)
         {
             this.isAutostart = isAutostart;
-            Text = "CPU Temp Monitor - Settings";
+            Text = "CpuTempApp Settings";
             StartPosition = FormStartPosition.CenterScreen;
             ClientSize = new Size(400, 315);
             FormBorderStyle = FormBorderStyle.None;
@@ -122,7 +122,7 @@ namespace CpuTempApp
             {
                 BackColor = ColorPanel,
                 Location = new Point(15, 45),
-                Size = new Size(370, 165),
+                Size = new Size(370, 155),
                 Padding = new Padding(18, 15, 18, 15)
             };
 
@@ -409,6 +409,7 @@ namespace CpuTempApp
                     return;
                 }
 
+                this.Size = new Size(400, 355);
                 this.Opacity = 1.0;
                 this.ShowInTaskbar = true;
                 this.WindowState = FormWindowState.Normal;

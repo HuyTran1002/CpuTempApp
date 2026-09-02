@@ -86,33 +86,7 @@ namespace CpuTempApp
             initialCpu = chkCpu.Checked;
             initialGpu = chkGpu.Checked;
 
-            // populate sensor lists (best-effort) by opening a temporary LibreHardwareMonitor Computer
-            try
-            {
-                var comp = new LibreHardwareMonitor.Hardware.Computer { IsCpuEnabled = true, IsGpuEnabled = true };
-                try { comp.Open(); } catch { }
-                foreach (var hw in comp.Hardware)
-                {
-                    try
-                    {
-                        foreach (var s in hw.Sensors)
-                        {
-                            if (s.SensorType != LibreHardwareMonitor.Hardware.SensorType.Temperature) continue;
-                            var name = s.Name ?? string.Empty;
-                            // add to CPU list if hardware is CPU
-                            if (hw.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.Cpu)
-                                cmbCpuSensor.Items.Add(name);
-                            if (hw.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.GpuAmd || hw.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.GpuNvidia || hw.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.GpuIntel || (hw.Name ?? string.Empty).ToLowerInvariant().Contains("gpu"))
-                                cmbGpuSensor.Items.Add(name);
-                        }
-                    }
-                    catch { }
-                }
-                try { comp.Close(); } catch { }
-            }
-            catch { }
-
-            // select previously chosen sensors if any
+            // populate sensor lists removed
             if (!string.IsNullOrEmpty(AppSettings.SelectedCpuSensor)) cmbCpuSensor.SelectedItem = AppSettings.SelectedCpuSensor;
             if (!string.IsNullOrEmpty(AppSettings.SelectedGpuSensor)) cmbGpuSensor.SelectedItem = AppSettings.SelectedGpuSensor;
             chkCpuDistance.Checked = AppSettings.CpuSensorIsDistanceToTjMax;

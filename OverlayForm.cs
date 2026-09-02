@@ -7,7 +7,6 @@ using System.Text;
 using System.IO;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
-using LibreHardwareMonitor.Hardware;
 
 namespace CpuTempApp
 {
@@ -258,9 +257,9 @@ namespace CpuTempApp
             SensorService.UpdateConfig(AppSettings.ShowCpu, AppSettings.ShowGpu);
             
             // Track if GPU/CPU just got enabled
-            if (AppSettings.ShowGpu && string.IsNullOrEmpty(gpuLabel.Text))
+            if (AppSettings.ShowGpu && !gpuLabel.Visible)
                 gpuJustEnabled = true;
-            if (AppSettings.ShowCpu && string.IsNullOrEmpty(cpuLabel.Text))
+            if (AppSettings.ShowCpu && !cpuLabel.Visible)
                 cpuJustEnabled = true;
             
             // Update label colors and visibility when settings change
@@ -269,10 +268,10 @@ namespace CpuTempApp
                 cpuLabel.ForeColor = AppSettings.TextColor;
                 gpuLabel.ForeColor = AppSettings.TextColor;
                 
-                // Immediately show labels with placeholder text for instant feedback
+                // Immediately show labels for instant feedback
                 if (AppSettings.ShowCpu)
                 {
-                    cpuLabel.Text = "CPU: --°C";
+                    if (cpuJustEnabled || cpuLabel.Text == "") cpuLabel.Text = "CPU: --°C";
                     cpuLabel.Visible = true;
                 }
                 else
@@ -282,7 +281,7 @@ namespace CpuTempApp
                 
                 if (AppSettings.ShowGpu)
                 {
-                    gpuLabel.Text = "GPU: --°C";
+                    if (gpuJustEnabled || gpuLabel.Text == "") gpuLabel.Text = "GPU: --°C";
                     gpuLabel.Visible = true;
                 }
                 else
@@ -296,7 +295,7 @@ namespace CpuTempApp
                 cpuLabel.Location = new Point(padding, 0);
                 if (AppSettings.ShowCpu && AppSettings.ShowGpu)
                 {
-                    gpuLabel.Location = new Point(padding + cpuLabel.Width + spacing, 0);
+                    gpuLabel.Location = new Point(padding + cpuLabel.PreferredWidth + spacing, 0);
                 }
                 else if (AppSettings.ShowGpu)
                 {
@@ -306,13 +305,13 @@ namespace CpuTempApp
                 // Update form width
                 int formWidth = padding;
                 if (AppSettings.ShowCpu)
-                    formWidth += cpuLabel.Width;
+                    formWidth += cpuLabel.PreferredWidth;
                 if (AppSettings.ShowGpu)
                 {
                     if (AppSettings.ShowCpu)
-                        formWidth += spacing + gpuLabel.Width;
+                        formWidth += spacing + gpuLabel.PreferredWidth;
                     else
-                        formWidth += gpuLabel.Width;
+                        formWidth += gpuLabel.PreferredWidth;
                 }
                 formWidth += padding;
                 this.Width = Math.Max(formWidth, 150);
@@ -497,7 +496,7 @@ namespace CpuTempApp
                 cpuLabel.Location = new Point(padding, 0);
                 if (AppSettings.ShowCpu && AppSettings.ShowGpu)
                 {
-                    gpuLabel.Location = new Point(padding + cpuLabel.Width + spacing, 0);
+                    gpuLabel.Location = new Point(padding + cpuLabel.PreferredWidth + spacing, 0);
                 }
                 else if (AppSettings.ShowGpu)
                 {
@@ -507,13 +506,13 @@ namespace CpuTempApp
                 // Update form width to fit content
                 int formWidth = padding;
                 if (AppSettings.ShowCpu)
-                    formWidth += cpuLabel.Width;
+                    formWidth += cpuLabel.PreferredWidth;
                 if (AppSettings.ShowGpu)
                 {
                     if (AppSettings.ShowCpu)
-                        formWidth += spacing + gpuLabel.Width;
+                        formWidth += spacing + gpuLabel.PreferredWidth;
                     else
-                        formWidth += gpuLabel.Width;
+                        formWidth += gpuLabel.PreferredWidth;
                 }
                 formWidth += padding;
                 this.Width = Math.Max(formWidth, 150);
