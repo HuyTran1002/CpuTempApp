@@ -8,21 +8,9 @@
 			"args": [
 				"build",
 				"${workspaceFolder}/CpuTempApp.csproj",
-				"/property:GenerateFullPaths=true",
-				"/tsc:${workspaceFolder}/bin/Debug/net7.0-windows"
+				"/property:GenerateFullPaths=true"
 			],
 			"problemMatcher": "$msCompile"
-		},
-		{
-			"label": "build",
-			"type": "shell",
-			"command": "dotnet",
-			"args": [
-				"build",
-				"${workspaceFolder}/CpuTempApp.csproj",
-				"/property:GenerateFullPaths=true",
-				"/tsc:${workspaceFolder}/bin/Debug/net7.0-windows"
-			]
 		}
 	]
 }

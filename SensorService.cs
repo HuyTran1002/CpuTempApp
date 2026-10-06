@@ -112,18 +112,8 @@ namespace CpuTempApp
                             cachedGpuTemp = null;
                         }
 
-                        if (!initialWaitDone)
-                        {
-                            // First time: wait longer so HWiNFO64 can boot up
-                            Thread.Sleep(LaunchWaitMs);
-                            initialWaitDone = true;
-                        }
-                        else
-                        {
-                            // Subsequent waits: shorter retry interval
-                            Thread.Sleep(RetryIntervalMs);
-                        }
-
+                        // Short wait so as soon as HWiNFO is live, we read temperatures immediately
+                        Thread.Sleep(500);
                         continue;
                     }
 

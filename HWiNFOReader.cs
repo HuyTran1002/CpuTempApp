@@ -85,16 +85,20 @@ namespace CpuTempApp
         private static volatile HWiNFOStatus _status = HWiNFOStatus.NotInstalled;
         public  static           HWiNFOStatus Status => _status;
 
-        // ── Auto-launch state ───────────────────────────────────────────────
-        private static volatile bool _launchAttempted = false;
-        private static string        _exePath         = null;
+        // ── Auto-launch and health monitoring ───────────────────────────────
+        private static volatile bool     _launchAttempted    = false;
+        private static string             _exePath            = null;
+        private static DateTime?          _runningSince       = null;
+        private static int                _deadlockPollCount  = 0;
+        private static readonly TimeSpan MaxContinuousUptime = TimeSpan.FromHours(11.5); // Restart before 12h free limit
 
         // ── Registry paths HWiNFO64 uses for its settings ──────────────────
-        // (both HKCU root and HKCU\Settings sub-key are tried)
+        // (both HKCU root, Settings, and Sensors sub-keys are written)
         private static readonly string[] HW_REG_KEYS =
         {
             @"Software\HWiNFO64",
             @"Software\HWiNFO64\Settings",
+            @"Software\HWiNFO64\Sensors",
         };
 
         private static readonly string[] HW_INSTALL_REG_KEYS =
@@ -109,13 +113,19 @@ namespace CpuTempApp
 
         /// <summary>
         /// Call once at startup. Finds HWiNFO64, enables shared memory in
-        /// its registry settings, and launches it minimised if not running.
+        /// its registry settings and INI, and launches it minimised if not running.
         /// Non-blocking — launch happens on a background thread.
         /// </summary>
         public static void EnsureRunning()
         {
             // If already live, nothing to do
-            if (IsSharedMemoryLive()) { _status = HWiNFOStatus.Running; return; }
+            if (IsSharedMemoryLive())
+            {
+                _status = HWiNFOStatus.Running;
+                if (!_runningSince.HasValue) _runningSince = DateTime.UtcNow;
+                _deadlockPollCount = 0;
+                return;
+            }
 
             _exePath = FindHWiNFO64Exe();
 
@@ -128,21 +138,21 @@ namespace CpuTempApp
 
             Log($"[HWiNFO] Found at: {_exePath}");
 
-            // Write shared-memory registry key so HWiNFO starts with it enabled
+            // Write shared-memory registry key and INI so HWiNFO starts fully automated
             EnableSharedMemoryInRegistry();
 
             if (IsHWiNFOProcessRunning())
             {
-                // Process is running but shared memory isn't live yet — maybe it needs
-                // a moment, or shared memory was just disabled. We'll keep polling.
+                // Process is running but shared memory isn't live yet
                 Log("[HWiNFO] Process already running; waiting for shared memory…");
                 _status = HWiNFOStatus.Launching;
+                StartWatchdog();
             }
             else if (!_launchAttempted)
             {
                 _launchAttempted = true;
                 _status = HWiNFOStatus.Launching;
-                Log("[HWiNFO] Launching HWiNFO64 minimised…");
+                Log("[HWiNFO] Launching HWiNFO64 (minimized, silent via INI/Registry)...");
 
                 // Launch on background thread so we don't block the sensor thread
                 System.Threading.ThreadPool.QueueUserWorkItem(_ =>
@@ -151,10 +161,13 @@ namespace CpuTempApp
                     {
                         var psi = new ProcessStartInfo(_exePath)
                         {
-                            Arguments       = "",
-                            UseShellExecute = true
+                            WorkingDirectory = Path.GetDirectoryName(_exePath),
+                            Arguments       = "", // Note: Command-line parameters are HWiNFO Pro only. Free version uses INI/Registry.
+                            UseShellExecute = true,
+                            WindowStyle     = ProcessWindowStyle.Minimized
                         };
                         Process.Start(psi);
+                        StartWatchdog();
                     }
                     catch (Exception ex)
                     {
@@ -166,24 +179,110 @@ namespace CpuTempApp
 
         /// <summary>
         /// Called every poll cycle. Updates _status and returns true when ready.
+        /// Also handles proactive restart before the 12-hour free shared-memory timeout,
+        /// and auto-recovers if HWiNFO process is running but shared memory stopped responding.
         /// </summary>
         public static bool CheckStatus()
         {
             if (IsSharedMemoryLive())
             {
+                if (_status != HWiNFOStatus.Running)
+                {
+                    Log("[HWiNFO] Shared memory is LIVE and active.");
+                    _runningSince = DateTime.UtcNow;
+                }
                 _status = HWiNFOStatus.Running;
+                _deadlockPollCount = 0;
+
+                // Proactive refresh before 12h free limit expires
+                if (_runningSince.HasValue && (DateTime.UtcNow - _runningSince.Value) > MaxContinuousUptime)
+                {
+                    Log("[HWiNFO] Approaching 12h free limit — performing silent background refresh...");
+                    RestartHWiNFO();
+                    return false;
+                }
+
                 return true;
             }
 
-            // If process died or was never found, retry discovery periodically
+            // Shared memory is NOT live
             if (_status == HWiNFOStatus.Running)
             {
+                // Was running but shared memory suddenly disappeared (e.g. 12h limit reached or closed)
+                Log("[HWiNFO] Shared memory disconnected — recovering...");
                 _status = HWiNFOStatus.Launching;
-                _launchAttempted = false;     // Allow re-launch
+                _launchAttempted = false;
+                RestartHWiNFO();
+                return false;
+            }
+
+            // If process is running but shared memory refuses to appear for ~20 poll cycles (~10s)
+            if (IsHWiNFOProcessRunning())
+            {
+                _deadlockPollCount++;
+                if (_deadlockPollCount > 20)
+                {
+                    Log("[HWiNFO] Process stuck without shared memory — restarting silently...");
+                    _deadlockPollCount = 0;
+                    RestartHWiNFO();
+                    return false;
+                }
+            }
+            else
+            {
+                _deadlockPollCount = 0;
+                _launchAttempted = false;
                 EnsureRunning();
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Silently terminates and restarts HWiNFO64 to reset shared memory.
+        /// </summary>
+        public static void RestartHWiNFO()
+        {
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    Log("[HWiNFO] Terminating existing HWiNFO process...");
+                    KillHWiNFOProcesses();
+                    Thread.Sleep(1500);
+
+                    // Re-apply settings
+                    EnableSharedMemoryInRegistry();
+
+                    _runningSince = null;
+                    _launchAttempted = false;
+                    _status = HWiNFOStatus.Launching;
+                    EnsureRunning();
+                }
+                catch (Exception ex)
+                {
+                    Log($"[HWiNFO] Restart failed: {ex.Message}");
+                }
+            });
+        }
+
+        public static void KillHWiNFOProcesses()
+        {
+            try
+            {
+                var procs = Process.GetProcessesByName("HWiNFO64")
+                    .Concat(Process.GetProcessesByName("HWiNFO32"));
+                foreach (var p in procs)
+                {
+                    try
+                    {
+                        p.Kill();
+                        p.WaitForExit(3000);
+                    }
+                    catch { }
+                }
+            }
+            catch { }
         }
 
         public class SensorReading
@@ -438,19 +537,55 @@ namespace CpuTempApp
         /// </summary>
         private static void EnableSharedMemoryInRegistry()
         {
-            // Registry (installed version)
+            // First, import full pre-configured .reg file if present
+            try
+            {
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                string dir = _exePath != null ? Path.GetDirectoryName(_exePath) : baseDir;
+                string regFile = Path.Combine(dir, "HWiNFO64_settings.reg");
+                if (!File.Exists(regFile))
+                {
+                    regFile = Path.Combine(baseDir, "HWiNFO64_settings.reg");
+                }
+                if (File.Exists(regFile))
+                {
+                    var psiReg = new ProcessStartInfo("regedit.exe", $"/s \"{regFile}\"")
+                    {
+                        UseShellExecute = true,
+                        WindowStyle = ProcessWindowStyle.Hidden
+                    };
+                    Process.Start(psiReg)?.WaitForExit(3000);
+                    Log("[HWiNFO] Applied verified HWiNFO64_settings.reg via regedit /s");
+                }
+            }
+            catch { }
+
+            // Registry (installed version fallback/assurance)
             foreach (var regPath in HW_REG_KEYS)
             {
                 try
                 {
                     using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(regPath, true);
                     key.SetValue("SHMEMEnabled", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                    key.SetValue("SensorsSM", 1, Microsoft.Win32.RegistryValueKind.DWord);
                     key.SetValue("SensorsOnly", 1, Microsoft.Win32.RegistryValueKind.DWord);
-                    key.SetValue("MinimizeOnStartup", 1, Microsoft.Win32.RegistryValueKind.DWord);
-                    key.SetValue("MinimizeSensors", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                    key.SetValue("OpenSensors", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                    key.SetValue("ShowSensors", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                    key.SetValue("ShowSummary", 0, Microsoft.Win32.RegistryValueKind.DWord);
+                    key.SetValue("ShowWelcome", 0, Microsoft.Win32.RegistryValueKind.DWord);
                     key.SetValue("ShowWelcomeAndProgress", 0, Microsoft.Win32.RegistryValueKind.DWord);
+                    key.SetValue("MinimizeSensors", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                    key.SetValue("MinimalizeSensors", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                    key.SetValue("MinimizeMainWnd", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                    key.SetValue("MinimalizeMainWnd", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                    key.SetValue("MinimizeOnStartup", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                    key.SetValue("SensorsAutoStart", 1, Microsoft.Win32.RegistryValueKind.DWord);
                     key.SetValue("UpdateCheck", 0, Microsoft.Win32.RegistryValueKind.DWord);
                     key.SetValue("BetaCheck", 0, Microsoft.Win32.RegistryValueKind.DWord);
+                    key.SetValue("AutoUpdate", 0, Microsoft.Win32.RegistryValueKind.DWord);
+                    key.SetValue("AutoUpdateBetaDisable", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                    key.SetValue("OpenGpuClocksSummary", 0, Microsoft.Win32.RegistryValueKind.DWord);
+                    key.SetValue("RivaTunerAutoClose", 0, Microsoft.Win32.RegistryValueKind.DWord);
                 }
                 catch { }
             }
@@ -463,19 +598,189 @@ namespace CpuTempApp
                     string dir     = Path.GetDirectoryName(_exePath);
                     string iniPath = Path.Combine(dir, "HWiNFO64.INI");
 
-                    // Merge or create the INI file with all required settings
+                    string iniContent = "[Settings]\r\n" +
+                                        "SensorsOnly=1\r\n" +
+                                        "ShowSensors=1\r\n" +
+                                        "OpenSensors=1\r\n" +
+                                        "ShowSummary=0\r\n" +
+                                        "ShowWelcome=0\r\n" +
+                                        "ShowWelcomeAndProgress=0\r\n" +
+                                        "MinimizeSensors=1\r\n" +
+                                        "MinimalizeSensors=1\r\n" +
+                                        "MinimizeMainWnd=1\r\n" +
+                                        "MinimalizeMainWnd=1\r\n" +
+                                        "MinimizeOnStartup=1\r\n" +
+                                        "SHMEMEnabled=1\r\n" +
+                                        "SensorsSM=1\r\n" +
+                                        "SensorsAutoStart=1\r\n" +
+                                        "AutoStart=0\r\n" +
+                                        "UpdateCheck=0\r\n" +
+                                        "BetaCheck=0\r\n" +
+                                        "AutoUpdate=0\r\n" +
+                                        "AutoUpdateBetaDisable=1\r\n" +
+                                        "OpenGpuClocksSummary=0\r\n" +
+                                        "RivaTunerAutoClose=0\r\n" +
+                                        "Theme=1\r\n";
+
                     string existing = File.Exists(iniPath) ? File.ReadAllText(iniPath) : "";
-                    if (!existing.Contains("SHMEMEnabled") || !existing.Contains("SensorsOnly") || !existing.Contains("UpdateCheck=0"))
+                    if (!existing.Contains("SensorsSM=1") || !existing.Contains("OpenSensors=1") || !existing.Contains("MinimalizeSensors=1") || !existing.Contains("ShowWelcome=0"))
                     {
-                        existing = "[Settings]\r\nSHMEMEnabled=1\r\nSensorsOnly=1\r\nMinimizeOnStartup=1\r\nMinimizeSensors=1\r\nShowWelcomeAndProgress=0\r\nUpdateCheck=0\r\nBetaCheck=0\r\n";
-                        File.WriteAllText(iniPath, existing);
-                        Log("[HWiNFO] Wrote startup options to HWiNFO64.INI");
+                        File.WriteAllText(iniPath, iniContent);
+                        Log("[HWiNFO] Wrote full startup options with SensorsSM=1 to HWiNFO64.INI");
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Log($"[HWiNFO] INI write failed: {ex.Message}");
+                }
             }
 
-            Log("[HWiNFO] Registry SHMEMEnabled=1 written");
+            Log("[HWiNFO] Auto-config registry and INI applied.");
+        }
+
+        // ── Win32 Window Automation Watchdog ──────────────────────────────
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumChildWindows(IntPtr hWndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        private const uint BM_CLICK    = 0x00F5;
+        private const uint BM_SETCHECK = 0x00F1;
+        private const uint WM_KEYDOWN  = 0x0100;
+        private const uint WM_KEYUP    = 0x0101;
+        private const int  VK_RETURN   = 0x0D;
+
+        private static volatile bool _watchdogRunning = false;
+
+        public static void StartWatchdog()
+        {
+            if (_watchdogRunning) return;
+            _watchdogRunning = true;
+
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    Log("[HWiNFO Watchdog] Started background window watchdog.");
+                    var sw = Stopwatch.StartNew();
+
+                    while (sw.ElapsedMilliseconds < 25000 && !IsSharedMemoryLive())
+                    {
+                        var hwProcs = Process.GetProcessesByName("HWiNFO64")
+                            .Concat(Process.GetProcessesByName("HWiNFO32"))
+                            .ToList();
+
+                        if (hwProcs.Count > 0)
+                        {
+                            foreach (var proc in hwProcs)
+                            {
+                                int pid = proc.Id;
+                                EnumWindows((hWnd, lParam) =>
+                                {
+                                    GetWindowThreadProcessId(hWnd, out uint wPid);
+                                    if (wPid == pid)
+                                    {
+                                        var titleSb = new System.Text.StringBuilder(256);
+                                        GetWindowText(hWnd, titleSb, 256);
+                                        string title = titleSb.ToString();
+
+                                        var classSb = new System.Text.StringBuilder(256);
+                                        GetClassName(hWnd, classSb, 256);
+                                        string className = classSb.ToString();
+
+                                        // 1. Welcome dialog check (checks Sensors-only, clicks Run)
+                                        if (title.IndexOf("Welcome", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                            (title.IndexOf("HWiNFO", StringComparison.OrdinalIgnoreCase) >= 0 && className == "#32770"))
+                                        {
+                                            EnumChildWindows(hWnd, (hChild, childParam) =>
+                                            {
+                                                var childText = new System.Text.StringBuilder(256);
+                                                GetWindowText(hChild, childText, 256);
+                                                string txt = childText.ToString();
+
+                                                // Ensure "Sensors-only" checkbox is checked
+                                                if (txt.IndexOf("Sensors", StringComparison.OrdinalIgnoreCase) >= 0)
+                                                {
+                                                    SendMessage(hChild, BM_SETCHECK, (IntPtr)1, IntPtr.Zero);
+                                                }
+
+                                                // Click "Run" / "Start" button
+                                                if (txt.Equals("Run", StringComparison.OrdinalIgnoreCase) ||
+                                                    txt.Equals("&Run", StringComparison.OrdinalIgnoreCase) ||
+                                                    txt.Equals("Start", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    SendMessage(hChild, BM_CLICK, IntPtr.Zero, IntPtr.Zero);
+                                                    Log($"[HWiNFO Watchdog] Auto-clicked '{txt}' button on '{title}'.");
+                                                }
+
+                                                return true;
+                                            }, IntPtr.Zero);
+
+                                            // Fallback: send Enter key to dialog
+                                            SendMessage(hWnd, WM_KEYDOWN, (IntPtr)VK_RETURN, IntPtr.Zero);
+                                            SendMessage(hWnd, WM_KEYUP, (IntPtr)VK_RETURN, IntPtr.Zero);
+                                        }
+
+                                        // 2. Alert / Warning dialogs (dismiss silently)
+                                        if (title.IndexOf("Warning", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                            title.IndexOf("Expired", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                            title.IndexOf("Update", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                            title.IndexOf("Notice", StringComparison.OrdinalIgnoreCase) >= 0)
+                                        {
+                                            EnumChildWindows(hWnd, (hChild, childParam) =>
+                                            {
+                                                var childText = new System.Text.StringBuilder(256);
+                                                GetWindowText(hChild, childText, 256);
+                                                string txt = childText.ToString();
+
+                                                if (txt.Equals("OK", StringComparison.OrdinalIgnoreCase) ||
+                                                    txt.Equals("Close", StringComparison.OrdinalIgnoreCase) ||
+                                                    txt.Equals("No", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    SendMessage(hChild, BM_CLICK, IntPtr.Zero, IntPtr.Zero);
+                                                    Log($"[HWiNFO Watchdog] Dismissed popup '{title}' via '{txt}'.");
+                                                }
+                                                return true;
+                                            }, IntPtr.Zero);
+                                        }
+                                    }
+                                    return true;
+                                }, IntPtr.Zero);
+                            }
+                        }
+
+                        Thread.Sleep(300);
+                    }
+
+                    if (IsSharedMemoryLive())
+                    {
+                        Log("[HWiNFO Watchdog] Shared memory is active. Watchdog completed.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"[HWiNFO Watchdog] Error: {ex.Message}");
+                }
+                finally
+                {
+                    _watchdogRunning = false;
+                }
+            });
         }
 
         private static T BytesToStruct<T>(byte[] bytes) where T : struct

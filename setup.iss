@@ -1,6 +1,6 @@
 [Setup]
 AppName=CPU Temp Monitor
-AppVersion=2.0.3
+AppVersion=2.0.4
 AppPublisher=CPU Temp
 AppPublisherURL=https://github.com
 AppSupportURL=https://github.com
@@ -41,6 +41,8 @@ Name: "startup"; Description: "Start CPU Temp Monitor at Windows startup"; Group
 Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net8.0-windows\CpuTempApp.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: app
 Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net8.0-windows\CpuTempApp.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: app
 Source: "D:\Program Files\Code\CpuTempApp\HWiNFO64.exe"; DestDir: "{app}\HWiNFO64"; Flags: ignoreversion; Components: app
+Source: "D:\Program Files\Code\CpuTempApp\HWiNFO64.INI"; DestDir: "{app}\HWiNFO64"; Flags: ignoreversion; Components: app
+Source: "D:\Program Files\Code\CpuTempApp\HWiNFO64_settings.reg"; DestDir: "{app}\HWiNFO64"; Flags: ignoreversion; Components: app
 
 ; Runtime config and dependencies
 Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net8.0-windows\*.json"; DestDir: "{app}"; Flags: ignoreversion; Components: app
@@ -54,6 +56,61 @@ Source: "D:\Program Files\Code\CpuTempApp\bin\Release\net8.0-windows\runtimes\*"
 ; Application icon
 Source: "D:\Program Files\Code\CpuTempApp\temperature_icon_175973.ico"; DestDir: "{app}"; Flags: ignoreversion; Components: app
 
+[Dirs]
+Name: "{app}\HWiNFO64"; Permissions: users-full
+
+[Registry]
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "SHMEMEnabled"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "SensorsSM"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "SensorsOnly"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "OpenSensors"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "ShowSensors"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "ShowSummary"; ValueData: "0"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "ShowWelcome"; ValueData: "0"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "ShowWelcomeAndProgress"; ValueData: "0"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "MinimizeSensors"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "MinimalizeSensors"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "MinimizeMainWnd"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "MinimalizeMainWnd"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "MinimizeOnStartup"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "SensorsAutoStart"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "UpdateCheck"; ValueData: "0"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "BetaCheck"; ValueData: "0"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "AutoUpdate"; ValueData: "0"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64"; ValueType: dword; ValueName: "AutoUpdateBetaDisable"; ValueData: "1"; Flags: noerror
+
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "SHMEMEnabled"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "SensorsSM"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "SensorsOnly"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "OpenSensors"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "ShowSensors"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "ShowSummary"; ValueData: "0"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "ShowWelcome"; ValueData: "0"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "ShowWelcomeAndProgress"; ValueData: "0"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "MinimizeSensors"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "MinimalizeSensors"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "MinimizeMainWnd"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "MinimalizeMainWnd"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "MinimizeOnStartup"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "SensorsAutoStart"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "UpdateCheck"; ValueData: "0"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "BetaCheck"; ValueData: "0"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "AutoUpdate"; ValueData: "0"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Settings"; ValueType: dword; ValueName: "AutoUpdateBetaDisable"; ValueData: "1"; Flags: noerror
+
+Root: HKCU; Subkey: "Software\HWiNFO64\Sensors"; ValueType: dword; ValueName: "SensorsSM"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Sensors"; ValueType: dword; ValueName: "SHMEMEnabled"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Sensors"; ValueType: dword; ValueName: "SensorsOnly"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Sensors"; ValueType: dword; ValueName: "OpenSensors"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Sensors"; ValueType: dword; ValueName: "MinimalizeSensors"; ValueData: "1"; Flags: noerror
+Root: HKCU; Subkey: "Software\HWiNFO64\Sensors"; ValueType: dword; ValueName: "MinimalizeMainWnd"; ValueData: "1"; Flags: noerror
+
+; CpuTempApp autostart and defaults
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "CpuTempMonitor"; ValueData: """{app}\CpuTempApp.exe"" /autostart"; Tasks: startup; Flags: noerror uninsdeletevalue
+Root: HKCU; Subkey: "Software\CpuTempApp"; ValueType: dword; ValueName: "ShowCpu"; ValueData: "1"; Flags: createvalueifdoesntexist
+Root: HKCU; Subkey: "Software\CpuTempApp"; ValueType: dword; ValueName: "ShowGpu"; ValueData: "1"; Flags: createvalueifdoesntexist
+Root: HKCU; Subkey: "Software\CpuTempApp"; ValueType: dword; ValueName: "FirstRun"; ValueData: "0"; Flags: noerror
+
 [Icons]
 Name: "{group}\CPU Temp Monitor"; Filename: "{app}\CpuTempApp.exe"; IconFilename: "{app}\temperature_icon_175973.ico"; IconIndex: 0
 Name: "{group}\{cm:UninstallProgram,CPU Temp Monitor}"; Filename: "{uninstallexe}"
@@ -61,7 +118,8 @@ Name: "{commondesktop}\CPU Temp Monitor"; Filename: "{app}\CpuTempApp.exe"; Icon
 Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\CPU Temp Monitor"; Filename: "{app}\CpuTempApp.exe"; IconFilename: "{app}\temperature_icon_175973.ico"; IconIndex: 0; Tasks: quicklaunchicon
 
 [Run]
-Filename: "schtasks.exe"; Parameters: "/create /tn ""CpuTempMonitor"" /tr """"{app}\CpuTempApp.exe"""" /autostart"" /sc onlogon /rl highest /f"; Tasks: startup; Flags: runhidden
+Filename: "regedit.exe"; Parameters: "/s ""{app}\HWiNFO64\HWiNFO64_settings.reg"""; Flags: runhidden
+Filename: "schtasks.exe"; Parameters: "/create /tn ""CpuTempMonitor"" /tr ""\""{app}\CpuTempApp.exe\"" /autostart"" /sc onlogon /rl highest /f"; Tasks: startup; Flags: runhidden
 Filename: "{app}\CpuTempApp.exe"; Description: "{cm:LaunchProgram,CPU Temp Monitor}"; Flags: nowait postinstall skipifsilent shellexec runasoriginaluser
 
 [UninstallRun]

@@ -9,34 +9,36 @@ namespace CpuTempApp
         [STAThread]
         static void Main(string[] args)
         {
+            // Check for autostart command line flag
+            bool isAutostart = false;
+            if (args != null)
+            {
+                foreach (var arg in args)
+                {
+                    if (arg.Equals("/autostart", StringComparison.OrdinalIgnoreCase) ||
+                        arg.Equals("/startup", StringComparison.OrdinalIgnoreCase) ||
+                        arg.Equals("--autostart", StringComparison.OrdinalIgnoreCase) ||
+                        arg.Equals("-autostart", StringComparison.OrdinalIgnoreCase))
+                    {
+                        isAutostart = true;
+                        break;
+                    }
+                }
+            }
+
             bool createdNew;
             using (var mutex = new System.Threading.Mutex(true, "CpuTempApp_SingleInstance_Mutex", out createdNew))
             {
                 if (!createdNew)
                 {
-                    // Đã có instance khác đang chạy, kích hoạt cửa sổ cũ nếu muốn
-                    MessageBox.Show("Ứng dụng đã chạy!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    if (!isAutostart)
+                    {
+                        MessageBox.Show("Ứng dụng đã chạy!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
                     return;
                 }
 
                 ApplicationConfiguration.Initialize();
-
-                // Check for autostart command line flag
-                bool isAutostart = false;
-                if (args != null)
-                {
-                    foreach (var arg in args)
-                    {
-                        if (arg.Equals("/autostart", StringComparison.OrdinalIgnoreCase) ||
-                            arg.Equals("/startup", StringComparison.OrdinalIgnoreCase) ||
-                            arg.Equals("--autostart", StringComparison.OrdinalIgnoreCase) ||
-                            arg.Equals("-autostart", StringComparison.OrdinalIgnoreCase))
-                        {
-                            isAutostart = true;
-                            break;
-                        }
-                    }
-                }
 
                 // Show welcome screen ONLY on manual first run
                 if (AppSettings.IsFirstRun && !isAutostart)

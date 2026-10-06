@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 
 namespace CpuTempApp
 {
@@ -21,6 +22,13 @@ namespace CpuTempApp
         private bool allowClose = false;
         private bool hasUnlockedPosition = false;  // Track if position has been unlocked
         private bool isAutostart = false;
+        private bool allowShowForm = false;
+        private Label titleLabel;
+
+        [DllImport("user32.dll")]
+        private static extern bool ReleaseCapture();
+        [DllImport("user32.dll")]
+        private static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
 
         private readonly Color ColorBackground = Color.FromArgb(10, 10, 20);
         private readonly Color ColorPanel = Color.FromArgb(20, 20, 35);
@@ -43,12 +51,9 @@ namespace CpuTempApp
             BackColor = ColorBackground;
             DoubleBuffered = true;
 
-            if (isAutostart)
-            {
-                WindowState = FormWindowState.Minimized;
-                ShowInTaskbar = false;
-                Opacity = 0;
-            }
+            WindowState = FormWindowState.Normal;
+            ShowInTaskbar = false;
+            Opacity = 1.0;
 
             // Close Button (X)
             var btnClose = new Button
@@ -105,17 +110,34 @@ namespace CpuTempApp
             };
             Controls.Add(btnReset);
 
-            // Developer Signature
-            var devLabel = new Label
+            // App Title Header
+            titleLabel = new Label
             {
-                Text = "Made by Dev Huy",
-                Font = new Font("Segoe UI", 8, FontStyle.Italic),
-                ForeColor = Color.FromArgb(100, 255, 200),
+                Text = "CPU TEMP MONITOR",
+                Font = new Font("Segoe UI", 11, FontStyle.Bold),
+                ForeColor = ColorAccent,
                 BackColor = ColorBackground,
                 AutoSize = true,
-                Location = new Point(15, 15)
+                Location = new Point(15, 12),
+                Cursor = Cursors.SizeAll
             };
+            titleLabel.MouseDown += Header_MouseDown;
+            Controls.Add(titleLabel);
+
+            var devLabel = new Label
+            {
+                Text = "• Made by Dev Huy",
+                Font = new Font("Segoe UI", 8, FontStyle.Italic),
+                ForeColor = Color.FromArgb(100, 160, 180),
+                BackColor = ColorBackground,
+                AutoSize = true,
+                Location = new Point(185, 15),
+                Cursor = Cursors.SizeAll
+            };
+            devLabel.MouseDown += Header_MouseDown;
             Controls.Add(devLabel);
+
+            this.MouseDown += Header_MouseDown;
 
             // Main Settings Panel - Centered & Compact
             var mainPanel = new Panel
@@ -309,8 +331,9 @@ namespace CpuTempApp
                 AppSettings.ShowCpu = chkCpu.Checked;
                 AppSettings.ShowGpu = chkGpu.Checked;
                 AppSettings.StartWithWindows = chkStartWithWindows.Checked;
+                AppSettings.IsFirstRun = false;
                 System.Diagnostics.Debug.WriteLine($"[ControlForm] After APPLY: AppSettings.ShowCpu={AppSettings.ShowCpu}, AppSettings.ShowGpu={AppSettings.ShowGpu}");
-                if (this.Modal) Close();
+                HideToTray();
             };
 
             // Edit Position button
@@ -361,12 +384,24 @@ namespace CpuTempApp
                     MessageBox.Show("Please lock the position first before hiding the app.", "Position Not Locked", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
+                AppSettings.IsFirstRun = false;
                 HideToTray();
             };
         }
 
+        protected override void SetVisibleCore(bool value)
+        {
+            if (!allowShowForm && (isAutostart || !AppSettings.IsFirstRun))
+            {
+                value = false;
+                if (!this.IsHandleCreated) CreateHandle();
+            }
+            base.SetVisibleCore(value);
+        }
+
         private void HideToTray()
         {
+            allowShowForm = false;
             this.ShowInTaskbar = false;
             this.Hide();
         }
@@ -392,10 +427,29 @@ namespace CpuTempApp
             catch { }
 
             trayMenu = new ContextMenuStrip();
-            trayMenu.Items.Add("Settings", null, (s, e) => ShowSettings());
-            trayMenu.Items.Add("Exit", null, (s, e) => ExitApplication());
+            trayMenu.Items.Add("Cài đặt (Settings)", null, (s, e) => ShowSettings());
+            trayMenu.Items.Add(new ToolStripSeparator());
+            trayMenu.Items.Add("Thoát (Exit)", null, (s, e) => ExitApplication());
 
             notifyIcon.ContextMenuStrip = trayMenu;
+
+            // 1-click chuột trái: mở hoặc ẩn UI ngay lập tức
+            notifyIcon.MouseClick += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left)
+                {
+                    if (this.Visible && this.WindowState != FormWindowState.Minimized)
+                    {
+                        HideToTray();
+                    }
+                    else
+                    {
+                        ShowSettings();
+                    }
+                }
+            };
+
+            // Double click: luôn luôn mở Settings
             notifyIcon.DoubleClick += (s, e) => ShowSettings();
         }
 
@@ -409,10 +463,11 @@ namespace CpuTempApp
                     return;
                 }
 
-                this.Size = new Size(400, 355);
+                allowShowForm = true;
                 this.Opacity = 1.0;
-                this.ShowInTaskbar = true;
+                this.ClientSize = new Size(400, 315);
                 this.WindowState = FormWindowState.Normal;
+                this.ShowInTaskbar = true;
                 this.Show();
                 this.CenterToScreen();
 
@@ -480,12 +535,18 @@ namespace CpuTempApp
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            if (isAutostart)
+            if (!allowShowForm && (isAutostart || !AppSettings.IsFirstRun))
             {
                 HideToTray();
-                this.Opacity = 1.0;
-                this.WindowState = FormWindowState.Normal;
-                isAutostart = false; // Reset so subsequent double-clicks show the settings window
+            }
+        }
+
+        private void Header_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                ReleaseCapture();
+                SendMessage(Handle, 0xA1, 0x2, 0); // WM_NCLBUTTONDOWN, HT_CAPTION
             }
         }
 

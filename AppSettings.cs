@@ -8,8 +8,8 @@ namespace CpuTempApp
     public static class AppSettings
     {
         private static readonly string RegistryPath = @"HKEY_CURRENT_USER\Software\CpuTempApp";
-        private static bool _showCpu = false;
-        private static bool _showGpu = false;
+        private static bool _showCpu = true;
+        private static bool _showGpu = true;
         private static Color _textColor = Color.Cyan;  // Default color is cyan
         private static int _overlayX = -1;  // -1 means center (default)
         private static int _overlayY = 0;
@@ -30,8 +30,8 @@ namespace CpuTempApp
                 {
                     _overlayX = (int)(key.GetValue("OverlayX") ?? -1);
                     _overlayY = (int)(key.GetValue("OverlayY") ?? 0);
-                    _showCpu = Convert.ToBoolean(key.GetValue("ShowCpu") ?? false);
-                    _showGpu = Convert.ToBoolean(key.GetValue("ShowGpu") ?? false);
+                    _showCpu = Convert.ToBoolean(key.GetValue("ShowCpu") ?? true);
+                    _showGpu = Convert.ToBoolean(key.GetValue("ShowGpu") ?? true);
                     _isFirstRun = Convert.ToInt32(key.GetValue("FirstRun") ?? 1) == 1;
                     
                     // Load text color (stored as ARGB int)
@@ -53,8 +53,8 @@ namespace CpuTempApp
                 _overlayX = -1;
                 _overlayY = 0;
                 _textColor = Color.Cyan;
-                _showCpu = false;
-                _showGpu = false;
+                _showCpu = true;
+                _showGpu = true;
                 _isFirstRun = true;
             }
         }
@@ -235,13 +235,22 @@ namespace CpuTempApp
             {
                 try
                 {
-                    var psi = new System.Diagnostics.ProcessStartInfo("schtasks.exe", "/query /tn \"CpuTempMonitor\"")
+                    // Check registry Run
+                    using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
+                    if (key?.GetValue("CpuTempMonitor") != null) return true;
+
+                    // Check scheduled task
+                    var psi = new System.Diagnostics.ProcessStartInfo("schtasks.exe")
                     {
                         CreateNoWindow = true,
                         UseShellExecute = false,
                         RedirectStandardOutput = true,
                         RedirectStandardError = true
                     };
+                    psi.ArgumentList.Add("/query");
+                    psi.ArgumentList.Add("/tn");
+                    psi.ArgumentList.Add("CpuTempMonitor");
+
                     using var p = System.Diagnostics.Process.Start(psi);
                     p?.WaitForExit();
                     return p != null && p.ExitCode == 0;
@@ -252,35 +261,55 @@ namespace CpuTempApp
             {
                 try
                 {
-                    string exePath = Application.ExecutablePath;
+                    string exePath = Environment.ProcessPath ?? Application.ExecutablePath;
+                    if (exePath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                    {
+                        exePath = System.IO.Path.ChangeExtension(exePath, ".exe");
+                    }
+
                     if (value)
                     {
-                        // Create scheduled task with highest privileges (bypasses UAC block on Windows boot)
-                        var args = $"/create /tn \"CpuTempMonitor\" /tr \"\\\"{exePath}\\\" /autostart\" /sc onlogon /rl highest /f";
-                        var psi = new System.Diagnostics.ProcessStartInfo("schtasks.exe", args)
+                        // 1. Create scheduled task with highest privileges (bypasses UAC block on Windows boot)
+                        var psi = new System.Diagnostics.ProcessStartInfo("schtasks.exe")
                         {
                             CreateNoWindow = true,
                             UseShellExecute = false
                         };
+                        psi.ArgumentList.Add("/create");
+                        psi.ArgumentList.Add("/tn");
+                        psi.ArgumentList.Add("CpuTempMonitor");
+                        psi.ArgumentList.Add("/tr");
+                        psi.ArgumentList.Add($"\"{exePath}\" /autostart");
+                        psi.ArgumentList.Add("/sc");
+                        psi.ArgumentList.Add("onlogon");
+                        psi.ArgumentList.Add("/rl");
+                        psi.ArgumentList.Add("highest");
+                        psi.ArgumentList.Add("/f");
+
                         using var p = System.Diagnostics.Process.Start(psi);
                         p?.WaitForExit();
 
-                        // Clean up legacy registry Run entry if exists
+                        // 2. Also register in HKCU Run as reliable fallback
                         try
                         {
                             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
-                            key?.DeleteValue("CpuTempMonitor", false);
+                            key?.SetValue("CpuTempMonitor", $"\"{exePath}\" /autostart");
                         }
                         catch { }
                     }
                     else
                     {
                         // Delete scheduled task
-                        var psi = new System.Diagnostics.ProcessStartInfo("schtasks.exe", "/delete /tn \"CpuTempMonitor\" /f")
+                        var psi = new System.Diagnostics.ProcessStartInfo("schtasks.exe")
                         {
                             CreateNoWindow = true,
                             UseShellExecute = false
                         };
+                        psi.ArgumentList.Add("/delete");
+                        psi.ArgumentList.Add("/tn");
+                        psi.ArgumentList.Add("CpuTempMonitor");
+                        psi.ArgumentList.Add("/f");
+
                         using var p = System.Diagnostics.Process.Start(psi);
                         p?.WaitForExit();
 

@@ -173,8 +173,8 @@ namespace CpuTempApp
             gpuLabel.MouseLeave += OverlayForm_MouseLeave;
 
             // Set text and position labels
-            cpuLabel.Text = "CPU";
-            gpuLabel.Text = "GPU";
+            cpuLabel.Text = "CPU: --°C";
+            gpuLabel.Text = "GPU: --°C";
             // GPU label position will be dynamically adjusted based on CPU label width
             
             // Adjust form width to fit content exactly
